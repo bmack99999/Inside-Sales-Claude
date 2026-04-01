@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Recycled Leads — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Recycled Leads</h1>
+    <div class="header-meta">
+      {% if refresh_info.refreshed_at %}
+        Last scan: {{ refresh_info.refreshed_at }} &nbsp;·&nbsp;
+        {{ refresh_info.total_leads or 0 }} total leads scanned
+      {% else %}
+        No scan yet &mdash; click Scan to pull recycled leads from Salesforce
+      {% endif %}
+    </div>
+  </div>
+  <div class="header-right">
+    <a href="{{ url_for('refresh_recycled') }}" class="btn btn-primary btn-sm">&#8635; Scan Recycled</a>
+  </div>
+</div>
+
+<!-- Category Tabs -->
+<div class="recycled-tabs">
+  <a href="{{ url_for('recycled', category='no_contact', phone_only=phone_only|int, source=source_filter) }}"
+     class="recycled-tab {{ 'recycled-tab-active' if category == 'no_contact' }}">
+    <span class="recycled-tab-count">{{ counts.no_contact }}</span>
+    Attempted, No Contact
+  </a>
+  <a href="{{ url_for('recycled', category='no_activity', phone_only=phone_only|int, source=source_filter) }}"
+     class="recycled-tab {{ 'recycled-tab-active' if category == 'no_activity' }}">
+    <span class="recycled-tab-count">{{ counts.no_activity }}</span>
+    Never Touched
+  </a>
+  <a href="{{ url_for('recycled', category='had_conversation', phone_only=phone_only|int, source=source_filter) }}"
+     class="recycled-tab {{ 'recycled-tab-active' if category == 'had_conversation' }}">
+    <span class="recycled-tab-count">{{ counts.had_conversation }}</span>
+    Had Conversation
+  </a>
+</div>
+
+<!-- Filters -->
+<div class="recycled-filters">
+  <form method="get" action="{{ url_for('recycled') }}" class="recycled-filter-form">
+    <input type="hidden" name="category" value="{{ category }}">
+
+    <label class="recycled-filter-check">
+      <input type="checkbox" name="phone_only" value="1" {{ 'checked' if phone_only }}
+             onchange="this.form.submit()">
+      Phone # only
+    </label>
+
+    <select name="source" onchange="this.form.submit()">
+      <option value="">All Sources</option>
+      {% for s in sources %}
+      <option value="{{ s }}" {{ 'selected' if s == source_filter }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+
+    <span class="recycled-filter-count">Showing {{ leads|length }} leads</span>
+  </form>
+
+  <div class="recycled-search-box">
+    <input type="text" id="recycled-search" placeholder="&#128269; Search name, company, phone..."
+           oninput="filterRecycled(this.value)">
+  </div>
+</div>
+
+<!-- Results Table -->
+{% if leads %}
+<div class="recycled-table-wrap">
+  <table class="recycled-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Company</th>
+        <th>Phone</th>
+        <th>Source</th>
+        <th class="sortable" data-col="created" onclick="sortTable('created')">Created <span class="sort-arrow">&#9662;</span></th>
+        <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in leads %}
+      <tr class="recycled-row"
+          data-search="{{ (l.name or '')|lower }} {{ (l.company or '')|lower }} {{ (l.phone or '')|lower }}"
+          data-created="{{ l.lead_created or '' }}"
+          data-activity="{{ l.last_activity_date or '' }}"
+          data-attempts="{{ l.attempt_count or 0 }}">
+        <td class="recycled-name">
+          <a href="{{ sf_base }}/lightning/r/Lead/{{ l.id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
+        </td>
+        <td>{{ l.company or '—' }}</td>
+        <td>
+          {% if l.phone %}
+          <a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
+        <td>{{ l.lead_created or '—' }}</td>
+        <td>{{ l.last_activity_date or 'Never' }}</td>
+        <td>{{ l.attempt_count or 0 }}</td>
+        <td class="recycled-notes-cell">
+          {% if l.attempt_summary and l.attempt_summary != 'No activity' %}
+            <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:60] }}{{ '...' if l.attempt_summary|length > 60 }}</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">&#9851;</div>
+  <h2>No recycled leads loaded</h2>
+  <p>Click <strong>Scan Recycled</strong> to pull the recycled leads pool from Salesforce.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterRecycled(query) {
+  query = query.toLowerCase();
+  document.querySelectorAll('.recycled-row').forEach(row => {
+    const text = row.dataset.search || '';
+    row.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+
+let currentSort = 'created';
+let sortAsc = false; // default descending (newest first)
+
+function sortTable(col) {
+  const tbody = document.querySelector('.recycled-table tbody');
+  if (!tbody) return;
+
+  if (currentSort === col) {
+    sortAsc = !sortAsc;
+  } else {
+    currentSort = col;
+    sortAsc = col === 'attempts' ? false : false; // default desc for all
+  }
+
+  // Update arrows
+  document.querySelectorAll('.sortable .sort-arrow').forEach(el => el.textContent = '');
+  const activeHeader = document.querySelector('[data-col="' + col + '"] .sort-arrow');
+  if (activeHeader) activeHeader.textContent = sortAsc ? '\u25B4' : '\u25BE';
+
+  const rows = Array.from(tbody.querySelectorAll('.recycled-row'));
+  rows.sort((a, b) => {
+    let va = a.dataset[col] || '';
+    let vb = b.dataset[col] || '';
+
+    if (col === 'attempts') {
+      va = parseInt(va) || 0;
+      vb = parseInt(vb) || 0;
+    }
+
+    // Push empty values to the bottom always
+    if (va === '' && vb === '') return 0;
+    if (va === '') return 1;
+    if (vb === '') return -1;
+
+    let cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  rows.forEach(row => tbody.appendChild(row));
+}
+</script>
+{% endblock %}

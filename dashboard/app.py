@@ -410,7 +410,7 @@ def skip_today():
 def refresh():
     script = os.path.join(os.path.dirname(__file__), '..', 'extract_salesforce.py')
     if os.path.exists(script):
-        subprocess.Popen(['py', script])
+        subprocess.Popen(['python3', script])
     return redirect(url_for('dashboard'))
 
 
@@ -471,6 +471,55 @@ def delete_callback():
     callbacks = [cb for cb in callbacks if cb.get('id') != cb_id]
     save_json('callbacks.json', callbacks)
     return redirect(url_for('dashboard'))
+
+
+SF_BASE = "https://crmcredorax.lightning.force.com"
+
+
+@app.route('/recycled')
+def recycled():
+    leads = load_json('recycled_leads.json', [])
+    refresh_info = load_json('recycled_refresh.json', {})
+
+    # Filter by category
+    category = request.args.get('category', 'no_contact')
+    source_filter = request.args.get('source', '')
+    phone_only = request.args.get('phone_only', '1') == '1'
+
+    filtered = [l for l in leads if l.get('category') == category]
+    if phone_only:
+        filtered = [l for l in filtered if l.get('phone')]
+    if source_filter:
+        filtered = [l for l in filtered if l.get('lead_source') == source_filter]
+
+    # Get unique lead sources for filter dropdown
+    sources = sorted(set(l.get('lead_source', '') for l in leads if l.get('lead_source')))
+
+    # Count by category
+    counts = {
+        'no_contact': sum(1 for l in leads if l.get('category') == 'no_contact'),
+        'no_activity': sum(1 for l in leads if l.get('category') == 'no_activity'),
+        'had_conversation': sum(1 for l in leads if l.get('category') == 'had_conversation'),
+    }
+
+    return render_template('recycled.html',
+        leads=filtered,
+        counts=counts,
+        category=category,
+        source_filter=source_filter,
+        phone_only=phone_only,
+        sources=sources,
+        refresh_info=refresh_info,
+        sf_base=SF_BASE,
+    )
+
+
+@app.route('/refresh_recycled')
+def refresh_recycled():
+    script = os.path.join(os.path.dirname(__file__), '..', 'extract_recycled.py')
+    if os.path.exists(script):
+        subprocess.Popen(['python3', script])
+    return redirect(url_for('recycled'))
 
 
 if __name__ == '__main__':
