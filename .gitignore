@@ -13,3 +13,11 @@ __pycache__/
 dashboard/data/leads.json
 dashboard/data/opportunities.json
 dashboard/data/last_refresh.json
+dashboard/data/recycled_leads.json
+dashboard/data/recycled_refresh.json
+
+# Local SQLite database
+dashboard/local.db
+
+# Environment variables — contains secrets, never commit
+.env

@@ -18,11 +18,18 @@ import os
 import subprocess
 from datetime import date, datetime
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+import requests
+
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-SF_ALIAS = "shift4"
-USER_ID = "005Pd0000084UhFIAU"  # Bryce Mack
+SF_ALIAS       = "shift4"
+USER_ID        = "005Pd0000084UhFIAU"  # Bryce Mack
 DASHBOARD_DATA = os.path.join(os.path.dirname(__file__), "dashboard", "data")
+DASHBOARD_URL  = os.environ.get("DASHBOARD_URL", "http://localhost:5000")
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "dev-ingest-key")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -302,6 +309,33 @@ def get_last_activity_type(activities):
     return "Task"
 
 
+# ─── Post to Dashboard ───────────────────────────────────────────────────────
+
+def post_to_dashboard(leads, opps, refresh_info):
+    """POST extracted data to the dashboard's ingest endpoint."""
+    url = f"{DASHBOARD_URL}/api/ingest"
+    payload = {
+        "type": "salesforce",
+        "leads": leads,
+        "opps": opps,
+        "refresh_info": refresh_info,
+    }
+    try:
+        resp = requests.post(url, json=payload,
+                             headers={"X-API-Key": INGEST_API_KEY},
+                             timeout=30)
+        if resp.status_code == 200:
+            result = resp.json()
+            print(f"  Dashboard updated: {result.get('leads')} leads, {result.get('opps')} opps")
+            return True
+        else:
+            print(f"  Dashboard POST failed: {resp.status_code} {resp.text[:200]}")
+            return False
+    except Exception as e:
+        print(f"  Dashboard POST error: {e}")
+        return False
+
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -313,21 +347,30 @@ def main():
     leads = extract_leads()
     opps = extract_opportunities()
 
-    print("\n[Writing output files...]")
-    save_json("leads.json", leads)
-    save_json("opportunities.json", opps)
-    save_json("last_refresh.json", {
+    refresh_info = {
         "refreshed_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
         "lead_count": len(leads),
         "opp_count": len(opps),
         "detail_pass_leads": sum(1 for l in leads if l.get("last_call_notes")),
         "detail_pass_opps": len(opps),
-    })
+    }
+
+    print(f"\n[Posting to dashboard at {DASHBOARD_URL}...]")
+    success = post_to_dashboard(leads, opps, refresh_info)
+
+    # Always write local JSON files as backup
+    print("[Writing local backup files...]")
+    save_json("leads.json", leads)
+    save_json("opportunities.json", opps)
+    save_json("last_refresh.json", refresh_info)
 
     print("\n" + "=" * 60)
     print(f"  Extraction complete.")
     print(f"  {len(leads)} leads | {len(opps)} open opportunities")
-    print(f"  Open http://localhost:5000 to see your daily plan.")
+    if success:
+        print(f"  Dashboard updated at {DASHBOARD_URL}")
+    else:
+        print(f"  Warning: dashboard POST failed — local files written as backup")
     print("=" * 60)
 
 

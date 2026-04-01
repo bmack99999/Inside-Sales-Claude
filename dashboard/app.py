@@ -1,29 +1,26 @@
 import json
 import os
-import subprocess
 import uuid
 from datetime import date, datetime
+
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from dateutil import parser as dateutil_parser
 
+from config import Config
+from models import (db, Lead, Opportunity, Callback, KpiLog,
+                    RecycledLead, RefreshLog, SkippedToday)
+
 app = Flask(__name__)
+app.config.from_object(Config)
+db.init_app(app)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+with app.app_context():
+    db.create_all()
 
-
-def load_json(filename, default=None):
-    path = os.path.join(DATA_DIR, filename)
-    if not os.path.exists(path):
-        return default if default is not None else []
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+SF_BASE = "https://crmcredorax.lightning.force.com"
 
 
-def save_json(filename, data):
-    path = os.path.join(DATA_DIR, filename)
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, default=str)
-
+# ── Date helpers ──────────────────────────────────────────────────────────────
 
 def parse_date(date_str):
     if not date_str:
@@ -48,25 +45,28 @@ def days_until(date_str):
     return (d - date.today()).days
 
 
+# ── Skipped-today helpers ─────────────────────────────────────────────────────
+
 def get_skipped_today():
-    """Return set of record IDs skipped today."""
-    data = load_json('skipped_today.json', {})
-    if data.get('date') != date.today().isoformat():
-        return set()
-    return set(data.get('ids', []))
+    today = date.today().isoformat()
+    rows = SkippedToday.query.filter_by(skip_date=today).all()
+    return set(r.record_id for r in rows)
 
 
-def save_skipped_today(ids):
-    save_json('skipped_today.json', {
-        'date': date.today().isoformat(),
-        'ids': list(ids)
-    })
+def add_skipped_today(record_id):
+    today = date.today().isoformat()
+    exists = SkippedToday.query.filter_by(
+        record_id=record_id, skip_date=today).first()
+    if not exists:
+        db.session.add(SkippedToday(record_id=record_id, skip_date=today))
+        db.session.commit()
 
+
+# ── Scoring ───────────────────────────────────────────────────────────────────
 
 def score_record(record):
     score = 0
 
-    # --- Recency score (0-35) ---
     age = days_since(record.get('last_activity_date'))
     if age <= 1:
         score += 35
@@ -77,16 +77,14 @@ def score_record(record):
     elif age <= 14:
         score += 8
 
-    # --- Task due score (0-30) ---
     due_in = days_until(record.get('next_task_due'))
     if due_in < 0:
-        score += 28   # overdue
+        score += 28
     elif due_in == 0:
-        score += 30   # due today
+        score += 30
     elif due_in == 1:
-        score += 20   # due tomorrow
+        score += 20
 
-    # --- Status / stage score (0-20) ---
     rec_type = record.get('type', 'lead')
     if rec_type == 'opportunity':
         stage = (record.get('stage') or '').lower()
@@ -109,12 +107,10 @@ def score_record(record):
         elif 'new' in status:
             score += 5
 
-    # --- Momentum score (0-10) ---
     attempts = record.get('call_attempts', 0) or 0
     if 1 <= attempts <= 3 and days_since(record.get('last_activity_date')) <= 7:
         score += 10
 
-    # --- Staleness penalty (0 to -15) ---
     if rec_type == 'lead':
         status = (record.get('status') or '').lower()
         active_statuses = ('new', 'working', 'attempted', 'connected', 'nurturing')
@@ -144,67 +140,64 @@ def badge_tier(score):
 def enrich_record(record):
     record['_score'] = score_record(record)
     record['_tier_label'], record['_tier_class'] = badge_tier(record['_score'])
-
     due_in = days_until(record.get('next_task_due'))
     record['_task_overdue'] = due_in < 0
     record['_task_due_today'] = due_in == 0
-
     record['_days_since_activity'] = days_since(record.get('last_activity_date'))
     return record
 
 
+def enrich_callback(cb):
+    added = days_since(cb.get('added_date'))
+    cb['_days_since_added'] = added if added != 9999 else 0
+    due_in = days_until(cb.get('task_due'))
+    cb['_task_overdue'] = due_in < 0
+    cb['_task_due_today'] = due_in == 0
+    last_called = days_since(cb.get('last_call_date'))
+    cb['_days_since_call'] = last_called if last_called != 9999 else None
+    return cb
+
+
 def data_staleness_days():
-    """How many days since last SF refresh."""
-    info = load_json('last_refresh.json', {})
-    raw = info.get('refreshed_at', '')
-    if not raw or raw == 'Sample data loaded':
+    log = RefreshLog.query.filter_by(
+        refresh_type='salesforce').order_by(
+        RefreshLog.id.desc()).first()
+    if not log or not log.refreshed_at:
         return None
     try:
-        dt = dateutil_parser.parse(raw)
+        dt = dateutil_parser.parse(log.refreshed_at)
         return (datetime.now() - dt).days
     except Exception:
         return None
 
 
-def enrich_callback(cb):
-    """Add computed display fields to a callback record."""
-    added = days_since(cb.get('added_date'))
-    cb['_days_since_added'] = added if added != 9999 else 0
-
-    due_in = days_until(cb.get('task_due'))
-    cb['_task_overdue'] = due_in < 0
-    cb['_task_due_today'] = due_in == 0
-
-    last_called = days_since(cb.get('last_call_date'))
-    cb['_days_since_call'] = last_called if last_called != 9999 else None
-
-    return cb
-
+# ── Main Dashboard ────────────────────────────────────────────────────────────
 
 @app.route('/')
 def dashboard():
-    leads = load_json('leads.json', [])
-    opps = load_json('opportunities.json', [])
-    refresh_info = load_json('last_refresh.json', {})
     skipped = get_skipped_today()
-    callbacks = [enrich_callback(cb) for cb in load_json('callbacks.json', [])]
 
-    all_records = []
-    for r in leads:
-        r['type'] = r.get('type', 'lead')
-        if r.get('id') not in skipped:
-            all_records.append(enrich_record(r))
-    for r in opps:
-        r['type'] = r.get('type', 'opportunity')
-        if r.get('id') not in skipped:
-            all_records.append(enrich_record(r))
+    leads = [enrich_record({**l.to_dict(), 'type': 'lead'})
+             for l in Lead.query.all()
+             if l.id not in skipped]
 
-    all_records.sort(key=lambda x: x['_score'], reverse=True)
+    opps = [enrich_record({**o.to_dict()})
+            for o in Opportunity.query.all()
+            if o.id not in skipped]
+
+    all_records = sorted(leads + opps, key=lambda x: x['_score'], reverse=True)
 
     hot  = [r for r in all_records if r['_tier_label'] == 'HOT']
     warm = [r for r in all_records if r['_tier_label'] == 'WARM']
     cool = [r for r in all_records if r['_tier_label'] == 'COOL']
     cold = [r for r in all_records if r['_tier_label'] == 'COLD']
+
+    callbacks = [enrich_callback(c.to_dict())
+                 for c in Callback.query.all()]
+
+    log = RefreshLog.query.filter_by(
+        refresh_type='salesforce').order_by(RefreshLog.id.desc()).first()
+    refresh_info = log.to_dict() if log else {}
 
     today_str = date.today().strftime('%A, %B %d, %Y').replace(' 0', ' ')
     stale_days = data_staleness_days()
@@ -220,290 +213,267 @@ def dashboard():
     )
 
 
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+
 @app.route('/pipeline')
 def pipeline():
-    opps = load_json('opportunities.json', [])
-    for r in opps:
-        r['type'] = 'opportunity'
-        enrich_record(r)
-
+    opps = [enrich_record(o.to_dict()) for o in Opportunity.query.all()]
     stages = ['Demo Scheduled', 'Proposal Sent', 'Application', 'Closed Won', 'Other']
     grouped = {s: [] for s in stages}
     for r in opps:
         stage = r.get('stage', '')
-        matched = False
-        for s in stages[:-1]:
-            if s.lower() in stage.lower():
-                grouped[s].append(r)
-                matched = True
-                break
+        matched = any(s.lower() in stage.lower() and not grouped[s].append(r)
+                      for s in stages[:-1])
         if not matched:
             grouped['Other'].append(r)
-
     return render_template('pipeline.html', grouped=grouped, stages=stages)
 
 
+# ── KPIs ──────────────────────────────────────────────────────────────────────
+
 @app.route('/kpis')
 def kpis():
-    kpi_log = load_json('kpi_log.json', [])
+    kpi_log = [k.to_dict() for k in
+               KpiLog.query.order_by(KpiLog.date.desc()).all()]
     return render_template('kpis.html', kpi_log=kpi_log)
 
 
 @app.route('/api/kpis')
 def api_kpis():
-    kpi_log = load_json('kpi_log.json', [])
+    kpi_log = [k.to_dict() for k in
+               KpiLog.query.order_by(KpiLog.date.desc()).all()]
     return jsonify(kpi_log)
 
 
 @app.route('/api/records')
 def api_records():
-    leads = load_json('leads.json', [])
-    opps  = load_json('opportunities.json', [])
-    for r in leads:
-        r['type'] = r.get('type', 'lead')
-        enrich_record(r)
-    for r in opps:
-        r['type'] = r.get('type', 'opportunity')
-        enrich_record(r)
+    leads = [enrich_record({**l.to_dict(), 'type': 'lead'})
+             for l in Lead.query.all()]
+    opps  = [enrich_record(o.to_dict()) for o in Opportunity.query.all()]
     return jsonify(leads + opps)
 
 
+# ── Log KPI ───────────────────────────────────────────────────────────────────
+
 @app.route('/log_kpi', methods=['POST'])
 def log_kpi():
-    kpi_log = load_json('kpi_log.json', [])
-    entry = {
-        'date': date.today().isoformat(),
-        'dials':        int(request.form.get('dials', 0)),
-        'connects':     int(request.form.get('connects', 0)),
-        'voicemails':   int(request.form.get('voicemails', 0)),
-        'demos_set':    int(request.form.get('demos_set', 0)),
-        'applications': int(request.form.get('applications', 0)),
-        'closes':       int(request.form.get('closes', 0)),
-        'logged_at': datetime.now().isoformat()
-    }
-    kpi_log = [e for e in kpi_log if e.get('date') != entry['date']]
-    kpi_log.append(entry)
-    save_json('kpi_log.json', kpi_log)
+    today = date.today().isoformat()
+    entry = KpiLog.query.filter_by(date=today).first()
+    if not entry:
+        entry = KpiLog(date=today)
+        db.session.add(entry)
+    entry.dials        = int(request.form.get('dials', 0))
+    entry.connects     = int(request.form.get('connects', 0))
+    entry.voicemails   = int(request.form.get('voicemails', 0))
+    entry.demos_set    = int(request.form.get('demos_set', 0))
+    entry.applications = int(request.form.get('applications', 0))
+    entry.closes       = int(request.form.get('closes', 0))
+    entry.logged_at    = datetime.now().isoformat()
+    db.session.commit()
     return redirect(url_for('dashboard'))
 
+
+# ── Log Call ──────────────────────────────────────────────────────────────────
 
 @app.route('/log_call', methods=['POST'])
 def log_call():
-    """Log a call outcome for a record. Updates last_activity_date and notes."""
-    record_id  = request.form.get('record_id')
-    outcome    = request.form.get('outcome', 'Attempted')   # Connected / Voicemail / No Answer / Attempted
-    notes      = request.form.get('notes', '').strip()
-    next_task  = request.form.get('next_task', '').strip()
-    next_due   = request.form.get('next_task_due', '').strip()
+    record_id = request.form.get('record_id')
+    outcome   = request.form.get('outcome', 'Attempted')
+    notes     = request.form.get('notes', '').strip()
+    next_task = request.form.get('next_task', '').strip()
+    next_due  = request.form.get('next_task_due', '').strip()
+    today     = date.today().isoformat()
 
-    today = date.today().isoformat()
-
-    for filename in ('leads.json', 'opportunities.json'):
-        records = load_json(filename, [])
-        changed = False
-        for r in records:
-            if r.get('id') == record_id:
-                r['last_activity_date'] = today
-                r['last_activity_type'] = 'Call'
-                if outcome == 'Connected':
-                    if r.get('type') == 'lead':
-                        r['status'] = 'Connected'
-                    r['call_attempts'] = (r.get('call_attempts') or 0) + 1
-                elif outcome in ('Voicemail', 'No Answer', 'Attempted'):
-                    if r.get('type') == 'lead' and (r.get('status') or '').lower() in ('new', ''):
-                        r['status'] = 'Attempted'
-                    r['call_attempts'] = (r.get('call_attempts') or 0) + 1
-                if notes:
-                    r['last_call_notes'] = notes
-                    r['notes_snippet'] = notes[:120] + ('...' if len(notes) > 120 else '')
-                if next_task:
-                    r['next_task'] = next_task
-                    r['next_step'] = next_task
-                if next_due:
-                    r['next_task_due'] = next_due
-                changed = True
-                break
-        if changed:
-            save_json(filename, records)
+    record = Lead.query.get(record_id) or Opportunity.query.get(record_id)
+    if record:
+        record.last_activity_date = today
+        record.last_activity_type = 'Call'
+        if outcome == 'Connected':
+            if isinstance(record, Lead):
+                record.status = 'Connected'
+            record.call_attempts = (record.call_attempts or 0) + 1
+        elif outcome in ('Voicemail', 'No Answer', 'Attempted'):
+            if isinstance(record, Lead) and (record.status or '').lower() in ('new', ''):
+                record.status = 'Attempted'
+            record.call_attempts = (record.call_attempts or 0) + 1
+        if notes:
+            record.last_call_notes = notes
+            record.notes_snippet   = notes[:120] + ('...' if len(notes) > 120 else '')
+        if next_task:
+            record.next_task = next_task
+            if isinstance(record, Opportunity):
+                record.next_step = next_task
+        if next_due:
+            record.next_task_due = next_due
+        db.session.commit()
 
     return redirect(url_for('dashboard'))
 
+
+# ── Add Record ────────────────────────────────────────────────────────────────
 
 @app.route('/add_record', methods=['POST'])
 def add_record():
-    """Manually add a lead or opportunity."""
     rec_type = request.form.get('type', 'lead')
-    today = date.today().isoformat()
+    today    = date.today().isoformat()
+    new_id   = 'manual-' + str(uuid.uuid4())[:8]
 
     if rec_type == 'opportunity':
-        record = {
-            'id': 'manual-' + str(uuid.uuid4())[:8],
-            'type': 'opportunity',
-            'name': request.form.get('name', '').strip(),
-            'account_name': request.form.get('company', '').strip(),
-            'contact_name': request.form.get('contact_name', '').strip(),
-            'phone': request.form.get('phone', '').strip(),
-            'stage': request.form.get('stage', 'Demo Scheduled'),
-            'amount': 0,
-            'close_date': request.form.get('close_date', '').strip() or None,
-            'last_activity_date': today,
-            'last_activity_type': None,
-            'next_step': request.form.get('next_task', '').strip() or None,
-            'next_task_due': request.form.get('next_task_due', '').strip() or None,
-            'days_in_stage': 0,
-            'probability': 0,
-            'notes_snippet': request.form.get('notes', '').strip() or None,
-            'last_call_notes': None,
-            'activity_summary': None,
-            'next_agreed_step': request.form.get('next_task', '').strip() or None,
-            'open_tasks': [],
-            'extracted_at': datetime.now().isoformat(),
-            'manually_added': True,
-        }
-        records = load_json('opportunities.json', [])
-        records.append(record)
-        save_json('opportunities.json', records)
+        record = Opportunity(
+            id             = new_id,
+            name           = request.form.get('name', '').strip(),
+            account_name   = request.form.get('company', '').strip(),
+            contact_name   = request.form.get('contact_name', '').strip(),
+            phone          = request.form.get('phone', '').strip(),
+            stage          = request.form.get('stage', 'Demo Scheduled'),
+            amount         = 0,
+            close_date     = request.form.get('close_date', '').strip() or None,
+            last_activity_date = today,
+            next_step      = request.form.get('next_task', '').strip() or None,
+            next_task_due  = request.form.get('next_task_due', '').strip() or None,
+            days_in_stage  = 0,
+            probability    = 0,
+            notes_snippet  = request.form.get('notes', '').strip() or None,
+            open_tasks     = [],
+            manually_added = True,
+            extracted_at   = datetime.now().isoformat(),
+        )
     else:
-        record = {
-            'id': 'manual-' + str(uuid.uuid4())[:8],
-            'type': 'lead',
-            'name': request.form.get('name', '').strip(),
-            'company': request.form.get('company', '').strip(),
-            'phone': request.form.get('phone', '').strip(),
-            'email': request.form.get('email', '').strip() or None,
-            'status': request.form.get('status', 'New'),
-            'lead_source': request.form.get('lead_source', 'Manual Entry'),
-            'lead_age_days': 0,
-            'last_activity_date': today,
-            'last_activity_type': None,
-            'next_task': request.form.get('next_task', '').strip() or None,
-            'next_task_due': request.form.get('next_task_due', '').strip() or None,
-            'call_attempts': 0,
-            'city': None, 'state': None,
-            'notes_snippet': request.form.get('notes', '').strip() or None,
-            'last_call_notes': None,
-            'activity_summary': None,
-            'next_agreed_step': None,
-            'open_tasks': [],
-            'is_recycled': False,
-            'extracted_at': datetime.now().isoformat(),
-            'manually_added': True,
-        }
-        records = load_json('leads.json', [])
-        records.append(record)
-        save_json('leads.json', records)
+        record = Lead(
+            id             = new_id,
+            name           = request.form.get('name', '').strip(),
+            company        = request.form.get('company', '').strip(),
+            phone          = request.form.get('phone', '').strip(),
+            email          = request.form.get('email', '').strip() or None,
+            status         = request.form.get('status', 'New'),
+            lead_source    = request.form.get('lead_source', 'Manual Entry'),
+            lead_age_days  = 0,
+            last_activity_date = today,
+            next_task      = request.form.get('next_task', '').strip() or None,
+            next_task_due  = request.form.get('next_task_due', '').strip() or None,
+            call_attempts  = 0,
+            notes_snippet  = request.form.get('notes', '').strip() or None,
+            open_tasks     = [],
+            is_recycled    = False,
+            manually_added = True,
+            extracted_at   = datetime.now().isoformat(),
+        )
 
+    db.session.add(record)
+    db.session.commit()
     return redirect(url_for('dashboard'))
 
+
+# ── Skip Today ────────────────────────────────────────────────────────────────
 
 @app.route('/skip_today', methods=['POST'])
 def skip_today():
-    """Hide a record for the rest of today."""
-    record_id = request.form.get('record_id')
-    skipped = get_skipped_today()
-    skipped.add(record_id)
-    save_skipped_today(skipped)
+    add_skipped_today(request.form.get('record_id'))
     return redirect(url_for('dashboard'))
 
 
+# ── Refresh (local Mac only) ──────────────────────────────────────────────────
+
 @app.route('/refresh')
 def refresh():
+    import subprocess
     script = os.path.join(os.path.dirname(__file__), '..', 'extract_salesforce.py')
     if os.path.exists(script):
         subprocess.Popen(['python3', script])
     return redirect(url_for('dashboard'))
 
 
-# ── Callback Routes ──────────────────────────────────────────────────────────
+@app.route('/refresh_recycled')
+def refresh_recycled():
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), '..', 'extract_recycled.py')
+    if os.path.exists(script):
+        subprocess.Popen(['python3', script])
+    return redirect(url_for('recycled'))
+
+
+# ── Callbacks ─────────────────────────────────────────────────────────────────
 
 @app.route('/add_callback', methods=['POST'])
 def add_callback():
-    """Add a manual callback request (someone else's SF opp)."""
     today = date.today().isoformat()
-    cb = {
-        'id': 'cb-' + str(uuid.uuid4())[:8],
-        'name':         request.form.get('name', '').strip(),
-        'contact_name': request.form.get('contact_name', '').strip() or None,
-        'phone':        request.form.get('phone', '').strip() or None,
-        'sf_url':       request.form.get('sf_url', '').strip() or None,
-        'task_due':     request.form.get('task_due', '').strip() or None,
-        'notes':        request.form.get('notes', '').strip() or None,
-        'do_not_call':  False,
-        'added_date':   today,
-        'last_call_date': None,
-        'last_call_notes': None,
-        'call_attempts': 0,
-    }
-    callbacks = load_json('callbacks.json', [])
-    callbacks.append(cb)
-    save_json('callbacks.json', callbacks)
+    cb = Callback(
+        id           = 'cb-' + str(uuid.uuid4())[:8],
+        name         = request.form.get('name', '').strip(),
+        contact_name = request.form.get('contact_name', '').strip() or None,
+        phone        = request.form.get('phone', '').strip() or None,
+        sf_url       = request.form.get('sf_url', '').strip() or None,
+        task_due     = request.form.get('task_due', '').strip() or None,
+        notes        = request.form.get('notes', '').strip() or None,
+        do_not_call  = False,
+        added_date   = today,
+        call_attempts = 0,
+    )
+    db.session.add(cb)
+    db.session.commit()
     return redirect(url_for('dashboard'))
 
 
 @app.route('/log_callback_call', methods=['POST'])
 def log_callback_call():
-    """Log call notes / outcome for a callback entry."""
-    cb_id      = request.form.get('cb_id')
-    notes      = request.form.get('notes', '').strip()
-    task_due   = request.form.get('task_due', '').strip()
-    do_not_call = request.form.get('do_not_call') == '1'
-
-    callbacks = load_json('callbacks.json', [])
-    for cb in callbacks:
-        if cb.get('id') == cb_id:
-            cb['last_call_date']  = date.today().isoformat()
-            cb['call_attempts']   = (cb.get('call_attempts') or 0) + 1
-            if notes:
-                cb['last_call_notes'] = notes
-            if task_due:
-                cb['task_due'] = task_due
-            cb['do_not_call'] = do_not_call
-            break
-    save_json('callbacks.json', callbacks)
+    cb = Callback.query.get(request.form.get('cb_id'))
+    if cb:
+        cb.last_call_date  = date.today().isoformat()
+        cb.call_attempts   = (cb.call_attempts or 0) + 1
+        notes = request.form.get('notes', '').strip()
+        if notes:
+            cb.last_call_notes = notes
+        task_due = request.form.get('task_due', '').strip()
+        if task_due:
+            cb.task_due = task_due
+        cb.do_not_call = request.form.get('do_not_call') == '1'
+        db.session.commit()
     return redirect(url_for('dashboard'))
 
 
 @app.route('/delete_callback', methods=['POST'])
 def delete_callback():
-    """Remove a callback entry."""
-    cb_id = request.form.get('cb_id')
-    callbacks = load_json('callbacks.json', [])
-    callbacks = [cb for cb in callbacks if cb.get('id') != cb_id]
-    save_json('callbacks.json', callbacks)
+    cb = Callback.query.get(request.form.get('cb_id'))
+    if cb:
+        db.session.delete(cb)
+        db.session.commit()
     return redirect(url_for('dashboard'))
 
 
-SF_BASE = "https://crmcredorax.lightning.force.com"
-
+# ── Recycled Leads ────────────────────────────────────────────────────────────
 
 @app.route('/recycled')
 def recycled():
-    leads = load_json('recycled_leads.json', [])
-    refresh_info = load_json('recycled_refresh.json', {})
-
-    # Filter by category
-    category = request.args.get('category', 'no_contact')
+    category     = request.args.get('category', 'no_contact')
     source_filter = request.args.get('source', '')
-    phone_only = request.args.get('phone_only', '1') == '1'
+    phone_only   = request.args.get('phone_only', '1') == '1'
 
-    filtered = [l for l in leads if l.get('category') == category]
+    query = RecycledLead.query.filter_by(category=category)
     if phone_only:
-        filtered = [l for l in filtered if l.get('phone')]
+        query = query.filter(RecycledLead.phone.isnot(None),
+                             RecycledLead.phone != '')
     if source_filter:
-        filtered = [l for l in filtered if l.get('lead_source') == source_filter]
+        query = query.filter_by(lead_source=source_filter)
 
-    # Get unique lead sources for filter dropdown
-    sources = sorted(set(l.get('lead_source', '') for l in leads if l.get('lead_source')))
+    leads = [l.to_dict() for l in query.all()]
 
-    # Count by category
+    sources = sorted(set(
+        r.lead_source for r in RecycledLead.query.all()
+        if r.lead_source
+    ))
+
     counts = {
-        'no_contact': sum(1 for l in leads if l.get('category') == 'no_contact'),
-        'no_activity': sum(1 for l in leads if l.get('category') == 'no_activity'),
-        'had_conversation': sum(1 for l in leads if l.get('category') == 'had_conversation'),
+        'no_contact':       RecycledLead.query.filter_by(category='no_contact').count(),
+        'no_activity':      RecycledLead.query.filter_by(category='no_activity').count(),
+        'had_conversation': RecycledLead.query.filter_by(category='had_conversation').count(),
     }
 
+    log = RefreshLog.query.filter_by(
+        refresh_type='recycled').order_by(RefreshLog.id.desc()).first()
+    refresh_info = log.to_dict() if log else {}
+
     return render_template('recycled.html',
-        leads=filtered,
+        leads=leads,
         counts=counts,
         category=category,
         source_filter=source_filter,
@@ -514,12 +484,64 @@ def recycled():
     )
 
 
-@app.route('/refresh_recycled')
-def refresh_recycled():
-    script = os.path.join(os.path.dirname(__file__), '..', 'extract_recycled.py')
-    if os.path.exists(script):
-        subprocess.Popen(['python3', script])
-    return redirect(url_for('recycled'))
+# ── API: Ingest (called by extraction scripts) ────────────────────────────────
+
+@app.route('/api/ingest', methods=['POST'])
+def api_ingest():
+    # Authenticate
+    api_key = request.headers.get('X-API-Key', '')
+    if api_key != app.config['INGEST_API_KEY']:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json(force=True)
+    ingest_type = data.get('type')
+
+    if ingest_type == 'salesforce':
+        # Replace all non-manually-added leads and opps
+        Lead.query.filter_by(manually_added=False).delete()
+        Opportunity.query.filter_by(manually_added=False).delete()
+
+        for item in data.get('leads', []):
+            item.pop('type', None)
+            item.setdefault('manually_added', False)
+            db.session.merge(Lead(**item))
+
+        for item in data.get('opps', []):
+            item.pop('type', None)
+            item.setdefault('manually_added', False)
+            db.session.merge(Opportunity(**item))
+
+        info = data.get('refresh_info', {})
+        db.session.add(RefreshLog(
+            refresh_type      = 'salesforce',
+            refreshed_at      = info.get('refreshed_at'),
+            lead_count        = info.get('lead_count'),
+            opp_count         = info.get('opp_count'),
+            detail_pass_leads = info.get('detail_pass_leads'),
+            detail_pass_opps  = info.get('detail_pass_opps'),
+        ))
+        db.session.commit()
+        return jsonify({'ok': True, 'leads': len(data.get('leads', [])),
+                        'opps': len(data.get('opps', []))})
+
+    elif ingest_type == 'recycled':
+        RecycledLead.query.delete()
+        for item in data.get('leads', []):
+            db.session.merge(RecycledLead(**item))
+
+        info = data.get('refresh_info', {})
+        db.session.add(RefreshLog(
+            refresh_type     = 'recycled',
+            refreshed_at     = info.get('refreshed_at'),
+            total_leads      = info.get('total_leads'),
+            no_activity      = info.get('no_activity'),
+            no_contact       = info.get('no_contact'),
+            had_conversation = info.get('had_conversation'),
+        ))
+        db.session.commit()
+        return jsonify({'ok': True, 'leads': len(data.get('leads', []))})
+
+    return jsonify({'error': 'Unknown ingest type'}), 400
 
 
 if __name__ == '__main__':

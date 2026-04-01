@@ -15,10 +15,17 @@ import subprocess
 from collections import defaultdict
 from datetime import date, datetime
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+import requests
+
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-SF_ALIAS = "shift4"
+SF_ALIAS       = "shift4"
 DASHBOARD_DATA = os.path.join(os.path.dirname(__file__), "dashboard", "data")
+DASHBOARD_URL  = os.environ.get("DASHBOARD_URL", "http://localhost:5000")
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "dev-ingest-key")
 
 # Matches the Recycled Leads Report filters
 LEAD_SOURCES = (
@@ -197,20 +204,38 @@ def main():
     print(f"  Attempted, no contact: {counts['no_contact']}")
     print(f"  Had conversation:      {counts['had_conversation']}")
 
-    # Save
-    print("\n[Writing output files...]")
-    save_json('recycled_leads.json', output_leads)
-    save_json('recycled_refresh.json', {
+    refresh_info = {
         'refreshed_at': datetime.now().strftime('%Y-%m-%d %I:%M %p'),
         'total_leads': len(output_leads),
         'no_activity': counts['no_activity'],
         'no_contact': counts['no_contact'],
         'had_conversation': counts['had_conversation'],
-    })
+    }
+
+    # Post to dashboard
+    print(f"\n[Posting to dashboard at {DASHBOARD_URL}...]")
+    try:
+        resp = requests.post(
+            f"{DASHBOARD_URL}/api/ingest",
+            json={"type": "recycled", "leads": output_leads, "refresh_info": refresh_info},
+            headers={"X-API-Key": INGEST_API_KEY},
+            timeout=60
+        )
+        if resp.status_code == 200:
+            print(f"  Dashboard updated: {resp.json().get('leads')} leads")
+        else:
+            print(f"  Dashboard POST failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"  Dashboard POST error: {e}")
+
+    # Local backup files
+    print("[Writing local backup files...]")
+    save_json('recycled_leads.json', output_leads)
+    save_json('recycled_refresh.json', refresh_info)
 
     print("\n" + "=" * 60)
     print(f"  Scan complete. {len(output_leads)} recycled leads categorized.")
-    print(f"  Open http://localhost:5000/recycled to view.")
+    print(f"  Open {DASHBOARD_URL}/recycled to view.")
     print("=" * 60)
 
 
