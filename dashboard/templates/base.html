@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SkyTab Inside Sales{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="nav-logo">&#9642;</span>
+      SkyTab Inside Sales
+    </div>
+    <div class="nav-links">
+      <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        Daily Plan
+      </a>
+      <a href="{{ url_for('pipeline') }}" class="nav-link {% if request.endpoint == 'pipeline' %}active{% endif %}">
+        Pipeline
+      </a>
+      <a href="{{ url_for('kpis') }}" class="nav-link {% if request.endpoint == 'kpis' %}active{% endif %}">
+        KPIs
+      </a>
+    </div>
+  </nav>
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='charts.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

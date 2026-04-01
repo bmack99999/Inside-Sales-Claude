@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}KPIs — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">KPI Dashboard</h1>
+  </div>
+</div>
+
+<!-- Monthly Totals -->
+<div class="kpi-summary-row">
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Dials (MTD)</div>
+    <div class="kpi-summary-value" id="mtd-dials">—</div>
+  </div>
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Connects (MTD)</div>
+    <div class="kpi-summary-value" id="mtd-connects">—</div>
+  </div>
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Connect Rate</div>
+    <div class="kpi-summary-value" id="connect-rate">—</div>
+  </div>
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Demos Set (MTD)</div>
+    <div class="kpi-summary-value" id="mtd-demos">—</div>
+  </div>
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Demo Rate</div>
+    <div class="kpi-summary-value" id="demo-rate">—</div>
+  </div>
+  <div class="kpi-summary-card">
+    <div class="kpi-summary-label">Closes (MTD)</div>
+    <div class="kpi-summary-value" id="mtd-closes">—</div>
+  </div>
+</div>
+
+<!-- Funnel -->
+<div class="funnel-card">
+  <div class="funnel-title">Conversion Funnel (Last 30 Days)</div>
+  <div class="funnel-row">
+    <div class="funnel-stage" id="funnel-dials">
+      <div class="funnel-bar"></div>
+      <div class="funnel-label">Dials</div>
+      <div class="funnel-num">—</div>
+    </div>
+    <div class="funnel-arrow">&#8594;</div>
+    <div class="funnel-stage" id="funnel-connects">
+      <div class="funnel-bar"></div>
+      <div class="funnel-label">Connects</div>
+      <div class="funnel-num">—</div>
+    </div>
+    <div class="funnel-arrow">&#8594;</div>
+    <div class="funnel-stage" id="funnel-demos">
+      <div class="funnel-bar"></div>
+      <div class="funnel-label">Demos</div>
+      <div class="funnel-num">—</div>
+    </div>
+    <div class="funnel-arrow">&#8594;</div>
+    <div class="funnel-stage" id="funnel-closes">
+      <div class="funnel-bar"></div>
+      <div class="funnel-label">Closes</div>
+      <div class="funnel-num">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="chart-grid">
+  <div class="chart-card">
+    <div class="chart-title">Daily Dials (Last 30 Days)</div>
+    <canvas id="dialsChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Connect Rate % (Daily)</div>
+    <canvas id="connectRateChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Demos Set (Daily)</div>
+    <canvas id="demosChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Closes (Daily)</div>
+    <canvas id="closesChart"></canvas>
+  </div>
+</div>
+
+<!-- Log Table -->
+<div class="log-table-card">
+  <div class="log-table-title">Activity Log</div>
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Dials</th>
+        <th>Connects</th>
+        <th>VMs</th>
+        <th>Connect %</th>
+        <th>Demos</th>
+        <th>Apps</th>
+        <th>Closes</th>
+      </tr>
+    </thead>
+    <tbody id="kpi-table-body">
+      <tr><td colspan="8" class="table-empty">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // KPI data injected from Flask via API call
+  fetch('/api/kpis')
+    .then(r => r.json())
+    .then(data => {
+      if (window.renderKPIs) renderKPIs(data);
+    });
+</script>
+{% endblock %}

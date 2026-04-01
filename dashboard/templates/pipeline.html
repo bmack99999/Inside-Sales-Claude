@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Pipeline — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Pipeline</h1>
+  </div>
+</div>
+
+<div class="pipeline-board">
+  {% for stage in stages %}
+  {% set cards = grouped[stage] %}
+  <div class="pipeline-column">
+    <div class="pipeline-col-header">
+      {{ stage }}
+      <span class="pipeline-count">{{ cards|length }}</span>
+    </div>
+    <div class="pipeline-cards">
+      {% if cards %}
+        {% for r in cards|sort(attribute='_score', reverse=True) %}
+        <div class="pipeline-card {{ 'card-overdue' if r._task_overdue else '' }}">
+          <div class="pipeline-card-top">
+            <span class="card-priority-badge {{ r._tier_class }}">{{ r._tier_label }}</span>
+            <span class="pipeline-score">{{ r._score }}</span>
+          </div>
+          <div class="pipeline-name">{{ r.contact_name or r.name or 'Unknown' }}</div>
+          <div class="pipeline-company">{{ r.account_name or r.company or '' }}</div>
+          {% if r.phone %}
+          <a href="tel:{{ r.phone }}" class="pipeline-phone">{{ r.phone }}</a>
+          {% endif %}
+          {% if r.next_task_due %}
+          <div class="pipeline-task {{ 'text-overdue' if r._task_overdue else ('text-today' if r._task_due_today else '') }}">
+            {{ r.next_step or r.next_task or '—' }}
+            {% if r._task_overdue %} &#9888;{% endif %}
+          </div>
+          {% endif %}
+          {% if r.last_call_notes or r.notes_snippet %}
+          <div class="pipeline-notes">{{ r.last_call_notes or r.notes_snippet }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="pipeline-empty">No deals</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

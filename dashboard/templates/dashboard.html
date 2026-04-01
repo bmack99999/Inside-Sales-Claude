@@ -1,0 +1,607 @@
+{% extends "base.html" %}
+{% block title %}Daily Plan — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+
+<!-- Staleness Warning -->
+{% if stale_days is not none and stale_days >= 1 %}
+<div class="stale-banner">
+  &#9888; Salesforce data is <strong>{{ stale_days }} day{{ 's' if stale_days != 1 else '' }} old</strong>.
+  Tell Claude Code <em>"Run morning Salesforce extraction"</em> to refresh,
+  or <a href="{{ url_for('refresh') }}">trigger refresh</a>.
+</div>
+{% elif refresh_info.get('note') %}
+<div class="stale-banner stale-sample">
+  &#128196; Showing <strong>sample data</strong>.
+  Disable Salesforce Sidekick in Chrome, then tell Claude Code <em>"Run morning Salesforce extraction"</em> to load your real leads.
+</div>
+{% endif %}
+
+<!-- Header Bar -->
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">{{ today_str }}</h1>
+    <div class="header-meta">
+      {% if refresh_info.refreshed_at and refresh_info.refreshed_at != 'Sample data loaded' %}
+        Last refresh: {{ refresh_info.refreshed_at }} &nbsp;·&nbsp;
+        {{ refresh_info.lead_count or 0 }} leads &nbsp;·&nbsp; {{ refresh_info.opp_count or 0 }} opps
+      {% else %}
+        Sample data &mdash; run extraction to load real SF data
+      {% endif %}
+      {% if skipped_count %}&nbsp;·&nbsp; {{ skipped_count }} skipped today{% endif %}
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="badge badge-hot">{{ hot|length }} HOT</span>
+    <span class="badge badge-warm">{{ warm|length }} WARM</span>
+    <span class="badge badge-cool">{{ cool|length }} COOL</span>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('add-record-modal')">+ Add Record</button>
+    <a href="{{ url_for('refresh') }}" class="btn btn-secondary btn-sm">&#8635; Refresh SF</a>
+  </div>
+</div>
+
+<!-- KPI Input Form -->
+<div class="kpi-form-card">
+  <div class="kpi-form-title">Log Today's Activity</div>
+  <form action="{{ url_for('log_kpi') }}" method="post" class="kpi-form">
+    <div class="kpi-inputs">
+      <div class="kpi-input-group"><label>Dials</label><input type="number" name="dials" min="0" value="0"></div>
+      <div class="kpi-input-group"><label>Connects</label><input type="number" name="connects" min="0" value="0"></div>
+      <div class="kpi-input-group"><label>Voicemails</label><input type="number" name="voicemails" min="0" value="0"></div>
+      <div class="kpi-input-group"><label>Demos Set</label><input type="number" name="demos_set" min="0" value="0"></div>
+      <div class="kpi-input-group"><label>Applications</label><input type="number" name="applications" min="0" value="0"></div>
+      <div class="kpi-input-group"><label>Closes</label><input type="number" name="closes" min="0" value="0"></div>
+    </div>
+    <button type="submit" class="btn btn-primary">Log Day</button>
+  </form>
+</div>
+
+<!-- ── CALLBACK REQUESTS SECTION ── -->
+<details class="callbacks-section" open>
+  <summary class="section-header callbacks-summary">
+    <span class="section-dot dot-callback"></span>Callback Requests &mdash; Other Reps' Deals
+    <span class="section-count">{{ callbacks|length }}</span>
+    <button class="btn btn-secondary btn-sm callbacks-add-btn"
+            onclick="event.preventDefault(); openModal('add-callback-modal')">+ Add</button>
+  </summary>
+
+  {% if callbacks %}
+  <div class="callbacks-grid">
+    {% for cb in callbacks %}
+    <div class="callback-card {{ 'callback-dnc' if cb.do_not_call else '' }} {{ 'callback-overdue' if cb._task_overdue and not cb.do_not_call else '' }}">
+
+      <div class="callback-top">
+        <div class="callback-name-block">
+          {% if cb.do_not_call %}
+            <span class="cb-badge cb-badge-dnc">&#128683; DO NOT CALL</span>
+          {% else %}
+            <span class="cb-badge cb-badge-age {{ 'cb-age-ready' if cb._days_since_added >= 3 else ('cb-age-soon' if cb._days_since_added >= 2 else 'cb-age-new') }}">
+              {{ cb._days_since_added }}d old
+            </span>
+          {% endif %}
+          <span class="callback-name">{{ cb.name or 'Unknown' }}</span>
+        </div>
+        <form method="post" action="{{ url_for('delete_callback') }}" style="display:inline"
+              onsubmit="return confirm('Remove this callback entry?')">
+          <input type="hidden" name="cb_id" value="{{ cb.id }}">
+          <button type="submit" class="cb-remove-btn" title="Remove">&#10006;</button>
+        </form>
+      </div>
+
+      <div class="callback-details">
+        {% if cb.contact_name %}
+        <div class="callback-detail">
+          <span class="detail-label">Contact</span>
+          <span>{{ cb.contact_name }}</span>
+        </div>
+        {% endif %}
+
+        {% if cb.phone %}
+        <div class="callback-detail">
+          <span class="detail-label">Phone</span>
+          <a href="tel:{{ cb.phone }}" class="card-phone">{{ cb.phone }}</a>
+        </div>
+        {% endif %}
+
+        {% if cb.task_due %}
+        <div class="callback-detail">
+          <span class="detail-label">Follow Up</span>
+          <span class="{{ 'text-overdue' if cb._task_overdue else ('text-today' if cb._task_due_today else '') }}">
+            {{ cb.task_due }}
+            {% if cb._task_overdue %} &#9888; OVERDUE{% elif cb._task_due_today %} &#9733; TODAY{% endif %}
+          </span>
+        </div>
+        {% endif %}
+
+        {% if cb._days_since_call is not none %}
+        <div class="callback-detail">
+          <span class="detail-label">Last Call</span>
+          <span>{{ cb.last_call_date }}
+            {% if cb._days_since_call == 0 %}(today)
+            {% elif cb._days_since_call == 1 %}(yesterday)
+            {% else %}({{ cb._days_since_call }}d ago){% endif %}
+            {% if cb.call_attempts %}&nbsp;&middot;&nbsp;{{ cb.call_attempts }} attempt{{ 's' if cb.call_attempts != 1 else '' }}{% endif %}
+          </span>
+        </div>
+        {% elif cb.call_attempts %}
+        <div class="callback-detail">
+          <span class="detail-label">Attempts</span>
+          <span>{{ cb.call_attempts }}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if cb.last_call_notes %}
+      <div class="card-notes">{{ cb.last_call_notes }}</div>
+      {% elif cb.notes %}
+      <div class="card-notes">{{ cb.notes }}</div>
+      {% endif %}
+
+      <div class="callback-links-row">
+        {% if cb.sf_url %}
+        <a href="{{ cb.sf_url }}" target="_blank" class="cb-sf-link">&#128279; Open in Salesforce</a>
+        {% endif %}
+      </div>
+
+      <div class="card-actions">
+        <button class="card-btn card-btn-call"
+                onclick="openCallbackLog('{{ cb.id }}', '{{ (cb.name or '') | replace("'","") }}', '{{ cb.task_due or "" }}', {{ 'true' if cb.do_not_call else 'false' }})">
+          &#128222; Log Call
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="callbacks-empty">
+    No callback requests tracked. Click <strong>+ Add</strong> to track a deal from another rep's pipeline.
+  </div>
+  {% endif %}
+</details>
+
+<!-- Search & Filter -->
+<div class="search-bar">
+  <input type="text" id="record-search" placeholder="&#128269; Search by name, company, phone..." oninput="filterCards(this.value)">
+  <div class="filter-pills">
+    <button class="pill active" onclick="filterStatus(this, '')">All</button>
+    <button class="pill" onclick="filterStatus(this, 'lead')">Leads</button>
+    <button class="pill" onclick="filterStatus(this, 'opportunity')">Opps</button>
+    <button class="pill" onclick="filterStatus(this, 'overdue')">Overdue</button>
+  </div>
+</div>
+
+<!-- HOT List -->
+{% if hot %}
+<div class="section-header">
+  <span class="section-dot dot-hot"></span>HOT &mdash; Call First
+  <span class="section-count">{{ hot|length }}</span>
+</div>
+<div class="card-grid" id="grid-hot">
+  {% for r in hot %}{{ record_card(r) }}{% endfor %}
+</div>
+{% endif %}
+
+<!-- WARM List -->
+{% if warm %}
+<div class="section-header">
+  <span class="section-dot dot-warm"></span>WARM &mdash; Recent Activity
+  <span class="section-count">{{ warm|length }}</span>
+</div>
+<div class="card-grid" id="grid-warm">
+  {% for r in warm %}{{ record_card(r) }}{% endfor %}
+</div>
+{% endif %}
+
+<!-- COOL List -->
+{% if cool %}
+<div class="section-header">
+  <span class="section-dot dot-cool"></span>COOL &mdash; Fill Time
+  <span class="section-count">{{ cool|length }}</span>
+</div>
+<div class="card-grid" id="grid-cool">
+  {% for r in cool %}{{ record_card(r) }}{% endfor %}
+</div>
+{% endif %}
+
+<!-- COLD List (collapsed) -->
+{% if cold %}
+<details class="cold-section">
+  <summary class="section-header cold-summary">
+    <span class="section-dot dot-cold"></span>COLD &mdash; Low Priority
+    <span class="section-count">{{ cold|length }}</span>
+  </summary>
+  <div class="card-grid" id="grid-cold">
+    {% for r in cold %}{{ record_card(r) }}{% endfor %}
+  </div>
+</details>
+{% endif %}
+
+<!-- ── LOG CALLBACK CALL MODAL ── -->
+<div id="callback-log-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Log Callback Call</span>
+      <button class="modal-close" onclick="closeModal('callback-log-modal')">&times;</button>
+    </div>
+    <form action="{{ url_for('log_callback_call') }}" method="post" class="modal-form">
+      <input type="hidden" name="cb_id" id="cb-log-id">
+      <div class="modal-name" id="cb-log-name"></div>
+
+      <div class="form-row">
+        <label>Call Notes</label>
+        <textarea name="notes" rows="3" placeholder="What happened? Left VM? Spoke with them?"></textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Next Follow-Up Date</label>
+        <input type="date" name="task_due" id="cb-log-task-due">
+      </div>
+
+      <div class="form-row" style="flex-direction:row; align-items:center; gap:10px;">
+        <input type="checkbox" name="do_not_call" id="cb-dnc-check" value="1" style="width:16px;height:16px;">
+        <label for="cb-dnc-check" style="text-transform:none; font-size:13px; color:var(--text); font-weight:600; letter-spacing:0;">
+          Mark as Do Not Call
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('callback-log-modal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── ADD CALLBACK MODAL ── -->
+<div id="add-callback-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add Callback Request</span>
+      <button class="modal-close" onclick="closeModal('add-callback-modal')">&times;</button>
+    </div>
+    <form action="{{ url_for('add_callback') }}" method="post" class="modal-form">
+
+      <div class="form-row">
+        <label>Business / Opp Name *</label>
+        <input type="text" name="name" required placeholder="e.g. Joe's BBQ Shack">
+      </div>
+
+      <div class="form-row">
+        <label>Contact Name</label>
+        <input type="text" name="contact_name" placeholder="Owner / decision maker name">
+      </div>
+
+      <div class="form-row">
+        <label>Phone</label>
+        <input type="tel" name="phone" placeholder="555-867-5309">
+      </div>
+
+      <div class="form-row">
+        <label>Salesforce Opportunity URL</label>
+        <input type="url" name="sf_url" placeholder="https://crmcredorax.lightning.force.com/lightning/r/Opportunity/...">
+      </div>
+
+      <div class="form-row">
+        <label>Follow-Up Date</label>
+        <input type="date" name="task_due">
+      </div>
+
+      <div class="form-row">
+        <label>Notes</label>
+        <textarea name="notes" rows="2" placeholder="Context about this deal — who owns it, why you're following up..."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('add-callback-modal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Callback</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if total == 0 %}
+<div class="empty-state">
+  <div class="empty-icon">&#128222;</div>
+  <h2>No leads loaded yet</h2>
+  <p>Tell Claude Code <strong>"Run morning Salesforce extraction"</strong> to pull your leads and opportunities.</p>
+  <p style="margin-top:12px"><button class="btn btn-primary" onclick="openModal('add-record-modal')">Or add a record manually</button></p>
+</div>
+{% endif %}
+
+<!-- ── CALL LOG MODAL ── -->
+<div id="call-log-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Log a Call</span>
+      <button class="modal-close" onclick="closeModal('call-log-modal')">&times;</button>
+    </div>
+    <form action="{{ url_for('log_call') }}" method="post" class="modal-form">
+      <input type="hidden" name="record_id" id="call-record-id">
+      <div class="modal-name" id="call-record-name"></div>
+
+      <div class="form-row">
+        <label>Outcome</label>
+        <select name="outcome" required>
+          <option value="Connected">Connected — spoke to them</option>
+          <option value="Voicemail">Left Voicemail</option>
+          <option value="No Answer">No Answer</option>
+          <option value="Attempted">Attempted — other</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Call Notes</label>
+        <textarea name="notes" rows="3" placeholder="What happened? What did they say? Any objections?"></textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Next Task</label>
+        <input type="text" name="next_task" placeholder="e.g. Follow-up call, Send proposal">
+      </div>
+
+      <div class="form-row">
+        <label>Next Task Due</label>
+        <input type="date" name="next_task_due">
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('call-log-modal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Call</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── ADD RECORD MODAL ── -->
+<div id="add-record-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add Record</span>
+      <button class="modal-close" onclick="closeModal('add-record-modal')">&times;</button>
+    </div>
+    <form action="{{ url_for('add_record') }}" method="post" class="modal-form">
+      <div class="form-row">
+        <label>Type</label>
+        <select name="type" id="add-type" onchange="toggleOppFields(this.value)">
+          <option value="lead">Lead</option>
+          <option value="opportunity">Opportunity</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Name *</label>
+        <input type="text" name="name" required placeholder="Contact or opportunity name">
+      </div>
+
+      <div class="form-row">
+        <label>Company / Account</label>
+        <input type="text" name="company" placeholder="Restaurant name">
+      </div>
+
+      <div class="form-row">
+        <label>Phone</label>
+        <input type="tel" name="phone" placeholder="555-867-5309">
+      </div>
+
+      <div class="form-row">
+        <label>Email</label>
+        <input type="email" name="email" placeholder="owner@restaurant.com">
+      </div>
+
+      <div class="form-row" id="add-status-row">
+        <label>Lead Status</label>
+        <select name="status">
+          <option value="New">New</option>
+          <option value="Working">Working</option>
+          <option value="Attempted">Attempted</option>
+          <option value="Connected">Connected</option>
+          <option value="Nurturing">Nurturing</option>
+        </select>
+      </div>
+
+      <div class="form-row opp-only" id="add-stage-row" style="display:none">
+        <label>Stage</label>
+        <select name="stage">
+          <option value="Demo Scheduled">Demo Scheduled</option>
+          <option value="Proposal Sent">Proposal Sent</option>
+          <option value="Application">Application</option>
+          <option value="Closed Won">Closed Won</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Next Task</label>
+        <input type="text" name="next_task" placeholder="e.g. First call, Follow up">
+      </div>
+
+      <div class="form-row">
+        <label>Due Date</label>
+        <input type="date" name="next_task_due">
+      </div>
+
+      <div class="form-row">
+        <label>Notes</label>
+        <textarea name="notes" rows="2" placeholder="Any context on this lead..."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('add-record-modal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Record</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{# ── RECORD CARD MACRO ── #}
+{% macro record_card(r) %}
+<div class="record-card {{ 'card-overdue' if r._task_overdue else '' }}"
+     data-name="{{ (r.name or '') | lower }}"
+     data-company="{{ (r.company or r.account_name or '') | lower }}"
+     data-phone="{{ (r.phone or '') | lower }}"
+     data-type="{{ r.type }}"
+     data-overdue="{{ 'true' if r._task_overdue else 'false' }}">
+
+  <div class="card-top">
+    <div class="card-name-block">
+      <span class="card-priority-badge {{ r._tier_class }}">{{ r._tier_label }}</span>
+      <span class="card-type-badge {{ 'type-opp' if r.type == 'opportunity' else 'type-lead' }}">
+        {{ 'OPP' if r.type == 'opportunity' else 'LEAD' }}
+      </span>
+      <span class="card-name">{{ r.name or 'Unknown' }}</span>
+      {% if r.get('manually_added') %}
+        <span class="manual-badge">Manual</span>
+      {% endif %}
+    </div>
+    <div class="card-score">{{ r._score }}</div>
+  </div>
+
+  <div class="card-company">{{ r.company or r.account_name or '' }}</div>
+
+  <div class="card-details">
+    {% if r.phone %}
+    <div class="card-detail">
+      <span class="detail-label">Phone</span>
+      <a href="tel:{{ r.phone }}" class="card-phone">{{ r.phone }}</a>
+    </div>
+    {% endif %}
+
+    <div class="card-detail">
+      <span class="detail-label">Status</span>
+      <span>{{ r.status or r.stage or '—' }}</span>
+    </div>
+
+    {% if r.last_activity_date %}
+    <div class="card-detail">
+      <span class="detail-label">Last Activity</span>
+      <span class="{{ 'text-stale' if r._days_since_activity > 7 else '' }}">
+        {{ r.last_activity_date }}
+        {% if r._days_since_activity == 0 %}(today)
+        {% elif r._days_since_activity == 1 %}(yesterday)
+        {% else %}({{ r._days_since_activity }}d ago){% endif %}
+        {% if r.last_activity_type %} &middot; {{ r.last_activity_type }}{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    {% if r.next_task or r.next_step or r.next_task_due %}
+    <div class="card-detail">
+      <span class="detail-label">Next Task</span>
+      <span class="{{ 'text-overdue' if r._task_overdue else ('text-today' if r._task_due_today else '') }}">
+        {{ r.next_task or r.next_step or '—' }}
+        {% if r.next_task_due %}&nbsp;({{ r.next_task_due }}){% endif %}
+        {% if r._task_overdue %} &#9888; OVERDUE{% endif %}
+        {% if r._task_due_today %} &#9733; TODAY{% endif %}
+      </span>
+    </div>
+    {% endif %}
+
+    {% if r.call_attempts %}
+    <div class="card-detail">
+      <span class="detail-label">Attempts</span>
+      <span>{{ r.call_attempts }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if r.last_call_notes or r.activity_summary or r.notes_snippet %}
+  <div class="card-notes">
+    {{ r.last_call_notes or r.activity_summary or r.notes_snippet }}
+  </div>
+  {% endif %}
+
+  {% if r.next_agreed_step %}
+  <div class="card-next-step">
+    <strong>Next Step:</strong> {{ r.next_agreed_step }}
+  </div>
+  {% endif %}
+
+  <!-- Card Action Buttons -->
+  <div class="card-actions">
+    <button class="card-btn card-btn-call"
+            onclick="openCallLog('{{ r.id }}', '{{ (r.name or '') | replace("'","") }} — {{ (r.company or r.account_name or '') | replace("'","") }}')">
+      &#128222; Log Call
+    </button>
+    <form method="post" action="{{ url_for('skip_today') }}" style="display:inline">
+      <input type="hidden" name="record_id" value="{{ r.id }}">
+      <button type="submit" class="card-btn card-btn-skip" title="Hide for today">&#10006; Skip Today</button>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+
+{% block scripts %}
+<script>
+// ── Modal helpers ──
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+document.querySelectorAll('.modal-backdrop').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; });
+});
+
+// ── Call Log ──
+function openCallLog(recordId, recordName) {
+  document.getElementById('call-record-id').value = recordId;
+  document.getElementById('call-record-name').textContent = recordName;
+  // Default next task due to tomorrow
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  document.querySelector('#call-log-modal input[name="next_task_due"]').value =
+    tomorrow.toISOString().split('T')[0];
+  openModal('call-log-modal');
+}
+
+// ── Callback Log ──
+function openCallbackLog(cbId, cbName, currentDue, isDnc) {
+  document.getElementById('cb-log-id').value = cbId;
+  document.getElementById('cb-log-name').textContent = cbName;
+  document.getElementById('cb-dnc-check').checked = isDnc;
+  // Pre-fill next follow-up date: keep existing due date if set, else tomorrow
+  const dueFld = document.getElementById('cb-log-task-due');
+  if (currentDue) {
+    dueFld.value = currentDue;
+  } else {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    dueFld.value = tomorrow.toISOString().split('T')[0];
+  }
+  openModal('callback-log-modal');
+}
+
+// ── Add Record type toggle ──
+function toggleOppFields(type) {
+  document.getElementById('add-status-row').style.display = type === 'lead' ? '' : 'none';
+  document.getElementById('add-stage-row').style.display  = type === 'opportunity' ? '' : 'none';
+}
+
+// ── Search ──
+let activeType = '';
+function filterCards(query) {
+  applyFilters(query.toLowerCase(), activeType);
+}
+function filterStatus(btn, type) {
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  activeType = type;
+  applyFilters(document.getElementById('record-search').value.toLowerCase(), type);
+}
+function applyFilters(query, type) {
+  document.querySelectorAll('.record-card').forEach(card => {
+    const name     = card.dataset.name || '';
+    const company  = card.dataset.company || '';
+    const phone    = card.dataset.phone || '';
+    const cardType = card.dataset.type || '';
+    const overdue  = card.dataset.overdue === 'true';
+
+    const matchQuery = !query || name.includes(query) || company.includes(query) || phone.includes(query);
+    const matchType  = !type || type === cardType || (type === 'overdue' && overdue);
+    card.style.display = (matchQuery && matchType) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

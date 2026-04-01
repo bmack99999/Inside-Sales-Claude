@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp Word/Office lock files
+~$*
+
+# Claude local machine settings (machine-specific, do not commit)
+.claude/settings.local.json
+
+# Salesforce extracted data — regenerated each morning, may contain contact info
+dashboard/data/leads.json
+dashboard/data/opportunities.json
+dashboard/data/last_refresh.json

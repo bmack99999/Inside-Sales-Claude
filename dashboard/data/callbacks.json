@@ -1,0 +1,44 @@
+[
+  {
+    "id": "cb-init0001",
+    "name": "Taboon Bakery - HOLLYWOOD",
+    "contact_name": null,
+    "phone": null,
+    "sf_url": "https://crmcredorax.lightning.force.com/lightning/r/Opportunity/006Pd00000bezqiIAA/view",
+    "task_due": "2026-05-11",
+    "notes": null,
+    "do_not_call": false,
+    "added_date": "2026-03-31",
+    "last_call_date": null,
+    "last_call_notes": null,
+    "call_attempts": 0
+  },
+  {
+    "id": "cb-init0002",
+    "name": "THE SPOT",
+    "contact_name": null,
+    "phone": null,
+    "sf_url": "https://crmcredorax.lightning.force.com/lightning/r/Opportunity/006Pd00000bsHg5IAE/view",
+    "task_due": "2026-10-01",
+    "notes": "Not opening until next year. Follow up in October.",
+    "do_not_call": false,
+    "added_date": "2026-03-31",
+    "last_call_date": null,
+    "last_call_notes": null,
+    "call_attempts": 0
+  },
+  {
+    "id": "cb-init0003",
+    "name": "I WANT PHO",
+    "contact_name": null,
+    "phone": null,
+    "sf_url": "https://crmcredorax.lightning.force.com/lightning/r/Opportunity/006Pd00000fItzNIAS/view",
+    "task_due": "2026-04-20",
+    "notes": null,
+    "do_not_call": false,
+    "added_date": "2026-03-31",
+    "last_call_date": null,
+    "last_call_notes": null,
+    "call_attempts": 0
+  }
+]
