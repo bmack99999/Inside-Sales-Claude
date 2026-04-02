@@ -188,7 +188,35 @@ def main():
         total_opp_tasks = sum(len(v) for v in opp_tasks_by_lead.values())
         print(f"  Found {total_opp_tasks} opportunity tasks across converted leads")
 
-    # 2c: Pull ContentNotes for opp records
+    # 2c: Pull ContentNotes for lead records
+    lead_notes_by_lead = defaultdict(list)
+    print(f"  Pulling notes from lead records...")
+    for i in range(0, len(lead_ids), batch_size):
+        batch = lead_ids[i:i + batch_size]
+        id_list = "','".join(batch)
+        doc_links = run_soql(
+            f"SELECT ContentDocumentId, LinkedEntityId "
+            f"FROM ContentDocumentLink WHERE LinkedEntityId IN ('{id_list}')"
+        )
+        if doc_links:
+            doc_ids = list(set(d['ContentDocumentId'] for d in doc_links))
+            entity_map = {d['ContentDocumentId']: d['LinkedEntityId'] for d in doc_links}
+            for j in range(0, len(doc_ids), batch_size):
+                doc_batch = doc_ids[j:j + batch_size]
+                doc_id_list = "','".join(doc_batch)
+                notes = run_soql(
+                    f"SELECT Id, Title, TextPreview, CreatedDate "
+                    f"FROM ContentNote WHERE Id IN ('{doc_id_list}') "
+                    f"ORDER BY CreatedDate DESC"
+                )
+                for note in notes:
+                    lead_id = entity_map.get(note['Id'])
+                    if lead_id:
+                        lead_notes_by_lead[lead_id].append(note)
+    total_lead_notes = sum(len(v) for v in lead_notes_by_lead.values())
+    print(f"  Found {total_lead_notes} notes across lead records")
+
+    # 2d: Pull ContentNotes for opp records
     opp_notes_by_lead = defaultdict(list)
     if active_opp_ids:
         print(f"  Pulling notes from converted opportunities...")
@@ -229,17 +257,17 @@ def main():
 
     for lead in leads_raw:
         lid = lead['Id']
-        lead_tasks = tasks_by_lead.get(lid, [])
-        opp_tasks  = opp_tasks_by_lead.get(lid, [])
-        opp_notes  = opp_notes_by_lead.get(lid, [])
+        lead_tasks  = tasks_by_lead.get(lid, [])
+        opp_tasks   = opp_tasks_by_lead.get(lid, [])
+        lead_notes  = lead_notes_by_lead.get(lid, [])
+        opp_notes   = opp_notes_by_lead.get(lid, [])
 
-        # For converted leads: combine lead tasks + opp tasks + opp notes
-        # Sort combined by date desc
+        # Combine tasks from lead + opp records, sort by date desc
         all_lead_activities = lead_tasks + opp_tasks
         all_lead_activities.sort(key=lambda t: t.get('ActivityDate') or '', reverse=True)
 
-        # Add notes as pseudo-activities
-        for note in opp_notes:
+        # Add notes (lead + opp) as pseudo-activities
+        for note in lead_notes + opp_notes:
             all_lead_activities.append({
                 'Subject': note.get('Title') or 'Note',
                 'Description': note.get('TextPreview') or '',
