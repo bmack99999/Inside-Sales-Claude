@@ -309,6 +309,67 @@ def get_last_activity_type(activities):
     return "Task"
 
 
+# ─── Extract Tasks ───────────────────────────────────────────────────────────
+
+def extract_tasks():
+    """Pull today's completed tasks + upcoming scheduled tasks for the KPI page."""
+    today_str = date.today().isoformat()
+
+    print("\n[5/5] Querying Salesforce tasks...")
+
+    # Completed tasks with ActivityDate = today
+    completed_raw = run_soql(
+        f"SELECT Id, Subject, Description, ActivityDate, Status, TaskSubtype, "
+        f"Who.Name, What.Name "
+        f"FROM Task "
+        f"WHERE OwnerId = '{USER_ID}' "
+        f"AND ActivityDate = TODAY "
+        f"AND IsClosed = true "
+        f"ORDER BY LastModifiedDate DESC "
+        f"LIMIT 200"
+    )
+
+    # Open/scheduled tasks from today onward
+    scheduled_raw = run_soql(
+        f"SELECT Id, Subject, Description, ActivityDate, Status, Priority, "
+        f"Who.Name, What.Name "
+        f"FROM Task "
+        f"WHERE OwnerId = '{USER_ID}' "
+        f"AND IsClosed = false "
+        f"AND ActivityDate >= TODAY "
+        f"ORDER BY ActivityDate ASC "
+        f"LIMIT 100"
+    )
+
+    def fmt(t):
+        who  = t.get('Who')  or {}
+        what = t.get('What') or {}
+        return {
+            'id':           t.get('Id'),
+            'subject':      t.get('Subject') or '',
+            'description':  (t.get('Description') or '')[:200],
+            'activity_date': t.get('ActivityDate') or '',
+            'status':       t.get('Status') or '',
+            'task_subtype': t.get('TaskSubtype') or '',
+            'priority':     t.get('Priority') or '',
+            'who_name':     who.get('Name', '')  if isinstance(who,  dict) else '',
+            'what_name':    what.get('Name', '') if isinstance(what, dict) else '',
+        }
+
+    completed = [fmt(t) for t in completed_raw]
+    scheduled = [fmt(t) for t in scheduled_raw]
+
+    print(f"  Completed today:    {len(completed)}")
+    print(f"  Upcoming scheduled: {len(scheduled)}")
+
+    return {
+        'refreshed_at': datetime.now().strftime('%Y-%m-%d %I:%M %p'),
+        'date':         today_str,
+        'completed':    completed,
+        'scheduled':    scheduled,
+    }
+
+
 # ─── Post to Dashboard ───────────────────────────────────────────────────────
 
 def post_to_dashboard(leads, opps, refresh_info):
@@ -345,7 +406,8 @@ def main():
     print("=" * 60)
 
     leads = extract_leads()
-    opps = extract_opportunities()
+    opps  = extract_opportunities()
+    tasks = extract_tasks()
 
     refresh_info = {
         "refreshed_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
@@ -358,11 +420,28 @@ def main():
     print(f"\n[Posting to dashboard at {DASHBOARD_URL}...]")
     success = post_to_dashboard(leads, opps, refresh_info)
 
+    # Post tasks separately
+    try:
+        resp = requests.post(
+            f"{DASHBOARD_URL}/api/ingest",
+            json={"type": "tasks", "tasks": tasks},
+            headers={"X-API-Key": INGEST_API_KEY},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            print(f"  Tasks updated: {len(tasks.get('completed', []))} completed, "
+                  f"{len(tasks.get('scheduled', []))} scheduled")
+        else:
+            print(f"  Tasks POST failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"  Tasks POST error: {e}")
+
     # Always write local JSON files as backup
     print("[Writing local backup files...]")
     save_json("leads.json", leads)
     save_json("opportunities.json", opps)
     save_json("last_refresh.json", refresh_info)
+    save_json("sf_tasks.json", tasks)
 
     print("\n" + "=" * 60)
     print(f"  Extraction complete.")

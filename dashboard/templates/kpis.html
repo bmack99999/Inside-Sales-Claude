@@ -36,6 +36,40 @@
   </div>
 </div>
 
+<!-- SF Tasks: Today's Activity + Upcoming -->
+<div class="sf-tasks-grid">
+
+  <!-- Completed Today -->
+  <div class="sf-tasks-card">
+    <div class="sf-tasks-header">
+      <div>
+        <div class="sf-tasks-title">&#9989; Today's Completed Activities</div>
+        <div class="sf-tasks-meta" id="tasks-meta">Loading from Salesforce...</div>
+      </div>
+      <div class="sf-tasks-count" id="tasks-completed-count">—</div>
+    </div>
+    <div class="sf-tasks-type-row" id="tasks-type-row"></div>
+    <div class="sf-tasks-list" id="tasks-completed-list">
+      <div class="sf-tasks-empty">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Upcoming Schedule -->
+  <div class="sf-tasks-card">
+    <div class="sf-tasks-header">
+      <div>
+        <div class="sf-tasks-title">&#128197; Upcoming Schedule</div>
+        <div class="sf-tasks-meta" id="scheduled-meta">&nbsp;</div>
+      </div>
+      <div class="sf-tasks-count" id="tasks-scheduled-count">—</div>
+    </div>
+    <div class="sf-tasks-list sf-tasks-list-scroll" id="tasks-scheduled-list">
+      <div class="sf-tasks-empty">Loading...</div>
+    </div>
+  </div>
+
+</div>
+
 <!-- Funnel -->
 <div class="funnel-card">
   <div class="funnel-title">Conversion Funnel (Last 30 Days)</div>
@@ -111,11 +145,88 @@
 
 {% block scripts %}
 <script>
-  // KPI data injected from Flask via API call
+  // KPI charts/table
   fetch('/api/kpis')
     .then(r => r.json())
+    .then(data => { if (window.renderKPIs) renderKPIs(data); });
+
+  // SF Tasks
+  fetch('/api/tasks')
+    .then(r => r.json())
     .then(data => {
-      if (window.renderKPIs) renderKPIs(data);
+      const completed  = data.completed  || [];
+      const scheduled  = data.scheduled  || [];
+      const refreshed  = data.refreshed_at || '';
+
+      // Header counts
+      document.getElementById('tasks-completed-count').textContent = completed.length;
+      document.getElementById('tasks-scheduled-count').textContent = scheduled.length;
+      document.getElementById('tasks-meta').textContent =
+        refreshed ? 'Refreshed ' + refreshed : 'No data — hit Refresh SF Data';
+
+      // Type breakdown badges
+      const typeCounts = {};
+      completed.forEach(t => {
+        const sub = t.task_subtype || '';
+        const subj = (t.subject || '').toLowerCase();
+        let label = sub === 'Call' || subj.includes('call') ? 'Call'
+                  : sub === 'Email' || subj.includes('email') ? 'Email'
+                  : sub === 'LinkedIn' || subj.includes('linkedin') ? 'LinkedIn'
+                  : 'Other';
+        typeCounts[label] = (typeCounts[label] || 0) + 1;
+      });
+      const typeRow = document.getElementById('tasks-type-row');
+      typeRow.innerHTML = Object.entries(typeCounts).map(([k,v]) =>
+        `<span class="sf-type-badge sf-type-${k.toLowerCase()}">${k} <strong>${v}</strong></span>`
+      ).join('') || '<span class="sf-tasks-empty-inline">No tasks completed today</span>';
+
+      // Completed list
+      const cList = document.getElementById('tasks-completed-list');
+      if (completed.length === 0) {
+        cList.innerHTML = '<div class="sf-tasks-empty">No tasks completed today yet</div>';
+      } else {
+        cList.innerHTML = completed.map(t => {
+          const who  = t.who_name  ? `<span class="sf-task-who">${t.who_name}</span>`  : '';
+          const what = t.what_name ? `<span class="sf-task-what">${t.what_name}</span>` : '';
+          const desc = t.description ? `<div class="sf-task-desc">${t.description.substring(0,100)}</div>` : '';
+          return `<div class="sf-task-row">
+            <div class="sf-task-main"><span class="sf-task-subj">${t.subject || 'Task'}</span>${who}${what}</div>
+            ${desc}
+          </div>`;
+        }).join('');
+      }
+
+      // Scheduled list
+      const sList = document.getElementById('tasks-scheduled-list');
+      document.getElementById('scheduled-meta').textContent =
+        scheduled.length ? `Next: ${scheduled[0].activity_date}` : '';
+      if (scheduled.length === 0) {
+        sList.innerHTML = '<div class="sf-tasks-empty">No upcoming tasks scheduled</div>';
+      } else {
+        // Group by date
+        const byDate = {};
+        scheduled.forEach(t => {
+          const d = t.activity_date || 'No date';
+          (byDate[d] = byDate[d] || []).push(t);
+        });
+        sList.innerHTML = Object.entries(byDate).map(([d, tasks]) => {
+          const rows = tasks.map(t => {
+            const who  = t.who_name  ? `<span class="sf-task-who">${t.who_name}</span>`  : '';
+            const what = t.what_name ? `<span class="sf-task-what">${t.what_name}</span>` : '';
+            const pri  = t.priority === 'High' ? '<span class="sf-task-high">High</span>' : '';
+            return `<div class="sf-task-row">
+              <div class="sf-task-main">${pri}<span class="sf-task-subj">${t.subject || 'Task'}</span>${who}${what}</div>
+            </div>`;
+          }).join('');
+          return `<div class="sf-date-group"><div class="sf-date-label">${d}</div>${rows}</div>`;
+        }).join('');
+      }
+    })
+    .catch(() => {
+      ['tasks-completed-list','tasks-scheduled-list'].forEach(id => {
+        document.getElementById(id).innerHTML =
+          '<div class="sf-tasks-empty">Could not load — refresh SF data first</div>';
+      });
     });
 </script>
 {% endblock %}

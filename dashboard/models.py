@@ -181,6 +181,20 @@ class RefreshLog(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+class SFTaskData(db.Model):
+    """Stores today's completed + upcoming scheduled tasks pulled from Salesforce."""
+    __tablename__ = 'sf_task_data'
+
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    refreshed_at = db.Column(db.Text)
+    date         = db.Column(db.Text)
+    completed    = db.Column(JsonList)   # tasks completed today
+    scheduled    = db.Column(JsonList)   # open tasks due today or later
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 class SkippedToday(db.Model):
     __tablename__ = 'skipped_today'
 

@@ -8,7 +8,7 @@ from dateutil import parser as dateutil_parser
 
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
-                    RecycledLead, RefreshLog, SkippedToday, LeadColor)
+                    RecycledLead, RefreshLog, SkippedToday, LeadColor, SFTaskData)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -251,6 +251,12 @@ def api_kpis():
     kpi_log = [k.to_dict() for k in
                KpiLog.query.order_by(KpiLog.date.desc()).all()]
     return jsonify(kpi_log)
+
+
+@app.route('/api/tasks')
+def api_tasks():
+    row = SFTaskData.query.order_by(SFTaskData.id.desc()).first()
+    return jsonify(row.to_dict() if row else {})
 
 
 @app.route('/api/records')
@@ -569,6 +575,20 @@ def api_ingest():
         ))
         db.session.commit()
         return jsonify({'ok': True, 'leads': len(data.get('leads', []))})
+
+    elif ingest_type == 'tasks':
+        t = data.get('tasks', {})
+        SFTaskData.query.delete()
+        db.session.add(SFTaskData(
+            refreshed_at = t.get('refreshed_at'),
+            date         = t.get('date'),
+            completed    = t.get('completed', []),
+            scheduled    = t.get('scheduled', []),
+        ))
+        db.session.commit()
+        return jsonify({'ok': True,
+                        'completed': len(t.get('completed', [])),
+                        'scheduled': len(t.get('scheduled', []))})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
 
