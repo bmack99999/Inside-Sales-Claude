@@ -146,6 +146,7 @@ class RecycledLead(db.Model):
     attempt_summary    = db.Column(db.Text)
     extracted_at       = db.Column(db.Text)
     color              = db.Column(db.Text)  # yellow | red | blue | light_green | dark_green | purple
+    timezone           = db.Column(db.Text)  # ET | CT | MT | PT | AK | HI
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

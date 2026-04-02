@@ -109,6 +109,7 @@
         <th class="sortable" data-col="created" onclick="sortTable('created')">Created <span class="sort-arrow">&#9662;</span></th>
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
+        <th>TZ</th>
         <th>Notes</th>
         {% if converted != 'leads' %}<th>Opportunity</th>{% endif %}
       </tr>
@@ -138,6 +139,7 @@
         <td>{{ l.lead_created or '—' }}</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
         <td>{{ l.attempt_count or 0 }}</td>
+        <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td class="recycled-notes-cell">
           {% if l.attempt_summary and l.attempt_summary != 'No activity' %}
             <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:60] }}{{ '...' if l.attempt_summary|length > 60 }}</span>

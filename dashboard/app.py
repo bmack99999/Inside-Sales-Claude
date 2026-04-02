@@ -20,11 +20,12 @@ with app.app_context():
     # Migration: add color column to recycled_leads if it doesn't exist yet
     from sqlalchemy import text as sa_text
     with db.engine.connect() as _conn:
-        try:
-            _conn.execute(sa_text("ALTER TABLE recycled_leads ADD COLUMN color TEXT"))
-            _conn.commit()
-        except Exception:
-            pass  # column already exists
+        for col_def in ["color TEXT", "timezone TEXT"]:
+            try:
+                _conn.execute(sa_text(f"ALTER TABLE recycled_leads ADD COLUMN {col_def}"))
+                _conn.commit()
+            except Exception:
+                pass  # column already exists
 
 SF_BASE = "https://crmcredorax.lightning.force.com"
 

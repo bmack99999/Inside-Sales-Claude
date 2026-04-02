@@ -827,7 +827,21 @@ body {
 .recycled-table col.col-created  { width: 9%; }
 .recycled-table col.col-activity { width: 9%; }
 .recycled-table col.col-attempts { width: 7%; }
-.recycled-table col.col-notes    { width: 23%; }
+.recycled-table col.col-tz       { width: 5%; }
+.recycled-table col.col-notes    { width: 19%; }
+/* Timezone badges */
+.tz-badge {
+  display: inline-block; padding: 2px 6px; border-radius: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+}
+.tz-ET { background: #dbeafe; color: #1e40af; }
+.tz-CT { background: #d1fae5; color: #065f46; }
+.tz-MT { background: #fef3c7; color: #92400e; }
+.tz-PT { background: #ede9fe; color: #5b21b6; }
+.tz-AK { background: #e0f2fe; color: #0369a1; }
+.tz-HI { background: #fce7f3; color: #9d174d; }
+.tz-AT { background: #f3f4f6; color: #374151; }
+
 .recycled-table tbody tr:hover td { background: var(--bg); }
 .recycled-table tbody tr:last-child td { border-bottom: none; }
 .recycled-name { font-weight: 600; white-space: nowrap; }

@@ -15,6 +15,9 @@ import subprocess
 from collections import defaultdict
 from datetime import date, datetime
 
+import phonenumbers
+from phonenumbers import timezone as phone_tz
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -49,6 +52,70 @@ CONVERSATION_SIGNALS = [
     'currently using', 'contract', 'happy with', 'not interested',
     'already has', 'under contract', 'switching', 'considering',
 ]
+
+
+# ─── Timezone lookup ──────────────────────────────────────────────────────────
+
+# Map IANA tz names → short sales-friendly labels
+_TZ_LABELS = {
+    'America/New_York':              'ET',
+    'America/Detroit':               'ET',
+    'America/Kentucky/Louisville':   'ET',
+    'America/Kentucky/Monticello':   'ET',
+    'America/Indiana/Indianapolis':  'ET',
+    'America/Indiana/Vevay':         'ET',
+    'America/Indiana/Marengo':       'ET',
+    'America/Indiana/Vincennes':     'ET',
+    'America/Indiana/Winamac':       'ET',
+    'America/Chicago':               'CT',
+    'America/Indiana/Knox':          'CT',
+    'America/Indiana/Tell_City':     'CT',
+    'America/Menominee':             'CT',
+    'America/North_Dakota/Center':   'CT',
+    'America/North_Dakota/New_Salem':'CT',
+    'America/North_Dakota/Beulah':   'CT',
+    'America/Denver':                'MT',
+    'America/Boise':                 'MT',
+    'America/Phoenix':               'MT',   # Arizona — no DST
+    'America/Los_Angeles':           'PT',
+    'America/Anchorage':             'AK',
+    'America/Juneau':                'AK',
+    'America/Sitka':                 'AK',
+    'America/Yakutat':               'AK',
+    'America/Nome':                  'AK',
+    'Pacific/Honolulu':              'HI',
+    'America/Adak':                  'HI',
+    'America/Puerto_Rico':           'ET',
+    'America/Virgin':                'ET',
+    # Canada
+    'America/Toronto':               'ET',
+    'America/Montreal':              'ET',
+    'America/Halifax':               'AT',
+    'America/Vancouver':             'PT',
+    'America/Winnipeg':              'CT',
+    'America/Regina':                'CT',
+    'America/Edmonton':              'MT',
+    'America/Calgary':               'MT',
+}
+
+def get_timezone(phone):
+    """Return a short timezone label (ET/CT/MT/PT/AK/HI) from a phone number."""
+    if not phone:
+        return None
+    try:
+        parsed = phonenumbers.parse(phone, 'US')
+        if phonenumbers.is_valid_number(parsed):
+            tzs = phone_tz.time_zones_for_number(parsed)
+            if tzs:
+                for tz in tzs:
+                    label = _TZ_LABELS.get(tz)
+                    if label:
+                        return label
+                # Fallback: derive from first tz name
+                return tzs[0].split('/')[-1].replace('_', ' ')
+    except Exception:
+        pass
+    return None
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -313,6 +380,7 @@ def main():
             'attempt_count': attempt_count,
             'last_attempt': last_attempt,
             'attempt_summary': attempt_summary,
+            'timezone': get_timezone(lead.get('Phone')),
         })
 
     # Sort: no_contact by most recent lead created, no_activity same
