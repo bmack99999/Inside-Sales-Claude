@@ -606,6 +606,58 @@ body {
 .pipeline-notes { font-size: 11px; color: var(--text-light); font-style: italic; }
 .pipeline-empty { padding: 20px; text-align: center; color: var(--text-light); font-size: 12px; }
 
+/* ── Period Toggle ── */
+.period-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.period-btn {
+  padding: 6px 20px; font-size: 13px; font-weight: 600; border: none;
+  background: var(--card-bg); color: var(--muted); cursor: pointer; transition: all .15s;
+}
+.period-btn-active { background: var(--navy); color: #fff; }
+.period-btn:hover:not(.period-btn-active) { background: var(--bg); }
+
+/* ── Boss Funnel Row ── */
+.boss-funnel-row {
+  display: flex; align-items: center; gap: 0; margin-bottom: 14px;
+}
+.boss-card {
+  flex: 1; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 16px; text-align: center;
+}
+.boss-card-icon  { font-size: 22px; margin-bottom: 4px; }
+.boss-card-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+.boss-card-value { font-size: 42px; font-weight: 800; line-height: 1; }
+.boss-card-leads .boss-card-value { color: #1e40af; }
+.boss-card-opps  .boss-card-value { color: #d97706; }
+.boss-card-won   .boss-card-value { color: #059669; }
+
+.boss-funnel-arrow {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 0 6px; flex-shrink: 0; min-width: 60px;
+}
+.boss-funnel-line { height: 2px; width: 100%; background: var(--border); }
+.boss-funnel-rate { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+
+/* ── Boss Ratio Strip ── */
+.boss-ratio-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;
+}
+.boss-ratio-card {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; text-align: center;
+}
+.boss-ratio-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: .5px; color: var(--muted); margin-bottom: 4px; }
+.boss-ratio-value { font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1.1; }
+.boss-ratio-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+/* ── Section Divider ── */
+.section-divider {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+  padding-bottom: 6px; margin: 24px 0 16px;
+}
+
 /* ── KPI Summary Row ── */
 .kpi-summary-row {
   display: grid;

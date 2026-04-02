@@ -8,7 +8,8 @@ from dateutil import parser as dateutil_parser
 
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
-                    RecycledLead, RefreshLog, SkippedToday, LeadColor, SFTaskData)
+                    RecycledLead, RefreshLog, SkippedToday, LeadColor,
+                    SFTaskData, BossMetrics)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -251,6 +252,12 @@ def api_kpis():
     kpi_log = [k.to_dict() for k in
                KpiLog.query.order_by(KpiLog.date.desc()).all()]
     return jsonify(kpi_log)
+
+
+@app.route('/api/metrics')
+def api_metrics():
+    row = BossMetrics.query.order_by(BossMetrics.id.desc()).first()
+    return jsonify(row.to_dict() if row else {})
 
 
 @app.route('/api/tasks')
@@ -575,6 +582,18 @@ def api_ingest():
         ))
         db.session.commit()
         return jsonify({'ok': True, 'leads': len(data.get('leads', []))})
+
+    elif ingest_type == 'metrics':
+        m = data.get('metrics', {})
+        BossMetrics.query.delete()
+        db.session.add(BossMetrics(
+            refreshed_at = m.get('refreshed_at'),
+            mtd          = m.get('mtd', {}),
+            ytd          = m.get('ytd', {}),
+            monthly      = m.get('monthly', []),
+        ))
+        db.session.commit()
+        return jsonify({'ok': True})
 
     elif ingest_type == 'tasks':
         t = data.get('tasks', {})

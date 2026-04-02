@@ -309,6 +309,83 @@ def get_last_activity_type(activities):
     return "Task"
 
 
+# ─── Boss Metrics ────────────────────────────────────────────────────────────
+
+def extract_boss_metrics():
+    """Pull leads received, converted to opp, and closed won for boss reporting."""
+    from datetime import timedelta
+    today      = date.today()
+    month_start = today.replace(day=1).isoformat()
+    year_start  = today.replace(month=1, day=1).isoformat()
+    year_ago    = (today - timedelta(days=365)).isoformat()
+
+    print("\n[Metrics] Querying boss metrics...")
+
+    # All leads created in the last 12 months
+    leads_raw = run_soql(
+        f"SELECT Id, Lead_Created_Date__c "
+        f"FROM Lead WHERE OwnerId = '{USER_ID}' "
+        f"AND Lead_Created_Date__c >= {year_ago}"
+    )
+
+    # Leads converted to opp in the last 12 months
+    converted_raw = run_soql(
+        f"SELECT Id, ConvertedDate "
+        f"FROM Lead WHERE OwnerId = '{USER_ID}' "
+        f"AND IsConverted = true "
+        f"AND ConvertedDate >= {year_ago}"
+    )
+
+    # Closed Won opportunities in the last 12 months
+    closed_won_raw = run_soql(
+        f"SELECT Id, CloseDate, Name "
+        f"FROM Opportunity WHERE OwnerId = '{USER_ID}' "
+        f"AND StageName = 'Closed Won' "
+        f"AND CloseDate >= {year_ago}"
+    )
+
+    def period_counts(leads, converted, closed, since):
+        l = [r for r in leads     if (r.get('Lead_Created_Date__c') or '') >= since]
+        c = [r for r in converted if (r.get('ConvertedDate')         or '') >= since]
+        w = [r for r in closed    if (r.get('CloseDate')             or '') >= since]
+        tl = len(l)
+        tc = len(c)
+        tw = len(w)
+        return {
+            'total_leads':            tl,
+            'converted_opps':         tc,
+            'closed_won':             tw,
+            'conv_rate':              round(tc / tl * 100, 1) if tl else 0,
+            'close_rate_vs_leads':    round(tw / tl * 100, 1) if tl else 0,
+            'close_rate_vs_opps':     round(tw / tc * 100, 1) if tc else 0,
+        }
+
+    # Monthly breakdown for chart (last 12 months)
+    monthly = {}
+    for r in leads_raw:
+        m = (r.get('Lead_Created_Date__c') or '')[:7]  # YYYY-MM
+        if m: monthly.setdefault(m, {'leads': 0, 'converted': 0, 'closed_won': 0})['leads'] += 1
+    for r in converted_raw:
+        m = (r.get('ConvertedDate') or '')[:7]
+        if m: monthly.setdefault(m, {'leads': 0, 'converted': 0, 'closed_won': 0})['converted'] += 1
+    for r in closed_won_raw:
+        m = (r.get('CloseDate') or '')[:7]
+        if m: monthly.setdefault(m, {'leads': 0, 'converted': 0, 'closed_won': 0})['closed_won'] += 1
+
+    monthly_list = [{'month': k, **v} for k, v in sorted(monthly.items())]
+
+    result = {
+        'refreshed_at': datetime.now().strftime('%Y-%m-%d %I:%M %p'),
+        'mtd': period_counts(leads_raw, converted_raw, closed_won_raw, month_start),
+        'ytd': period_counts(leads_raw, converted_raw, closed_won_raw, year_start),
+        'monthly': monthly_list,
+    }
+    print(f"  MTD → leads: {result['mtd']['total_leads']}, "
+          f"opps: {result['mtd']['converted_opps']}, "
+          f"closed won: {result['mtd']['closed_won']}")
+    return result
+
+
 # ─── Extract Tasks ───────────────────────────────────────────────────────────
 
 def extract_tasks():
@@ -405,9 +482,10 @@ def main():
     print(f"  {date.today().strftime('%A, %B %d, %Y')}")
     print("=" * 60)
 
-    leads = extract_leads()
-    opps  = extract_opportunities()
-    tasks = extract_tasks()
+    leads   = extract_leads()
+    opps    = extract_opportunities()
+    tasks   = extract_tasks()
+    metrics = extract_boss_metrics()
 
     refresh_info = {
         "refreshed_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
@@ -442,6 +520,22 @@ def main():
     save_json("opportunities.json", opps)
     save_json("last_refresh.json", refresh_info)
     save_json("sf_tasks.json", tasks)
+
+    # Post boss metrics
+    try:
+        resp = requests.post(
+            f"{DASHBOARD_URL}/api/ingest",
+            json={"type": "metrics", "metrics": metrics},
+            headers={"X-API-Key": INGEST_API_KEY},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            print(f"  Boss metrics updated.")
+        else:
+            print(f"  Metrics POST failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"  Metrics POST error: {e}")
+    save_json("boss_metrics.json", metrics)
 
     print("\n" + "=" * 60)
     print(f"  Extraction complete.")

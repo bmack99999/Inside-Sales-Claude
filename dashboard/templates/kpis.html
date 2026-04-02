@@ -5,10 +5,102 @@
 <div class="page-header">
   <div class="header-left">
     <h1 class="page-title">KPI Dashboard</h1>
+    <div class="header-meta" id="metrics-refreshed">Loading...</div>
+  </div>
+  <div class="header-right">
+    <div class="period-toggle">
+      <button class="period-btn period-btn-active" id="btn-mtd" onclick="setPeriod('mtd')">MTD</button>
+      <button class="period-btn" id="btn-ytd" onclick="setPeriod('ytd')">YTD</button>
+    </div>
   </div>
 </div>
 
-<!-- Monthly Totals -->
+<!-- ── Boss Metrics ──────────────────────────────────────────────────────── -->
+<div class="boss-funnel-row">
+  <div class="boss-card boss-card-leads">
+    <div class="boss-card-icon">📥</div>
+    <div class="boss-card-label">Leads Received</div>
+    <div class="boss-card-value" id="bm-leads">—</div>
+  </div>
+  <div class="boss-funnel-arrow">
+    <div class="boss-funnel-line"></div>
+    <div class="boss-funnel-rate" id="bm-conv-rate">—%</div>
+    <div class="boss-funnel-line"></div>
+  </div>
+  <div class="boss-card boss-card-opps">
+    <div class="boss-card-icon">🔄</div>
+    <div class="boss-card-label">Converted to Opp</div>
+    <div class="boss-card-value" id="bm-opps">—</div>
+  </div>
+  <div class="boss-funnel-arrow">
+    <div class="boss-funnel-line"></div>
+    <div class="boss-funnel-rate" id="bm-close-rate-opps">—%</div>
+    <div class="boss-funnel-line"></div>
+  </div>
+  <div class="boss-card boss-card-won">
+    <div class="boss-card-icon">🏆</div>
+    <div class="boss-card-label">Closed Won</div>
+    <div class="boss-card-value" id="bm-won">—</div>
+  </div>
+</div>
+
+<!-- Ratio strip -->
+<div class="boss-ratio-row">
+  <div class="boss-ratio-card">
+    <div class="boss-ratio-label">Lead → Opp Conv Rate</div>
+    <div class="boss-ratio-value" id="br-conv-rate">—%</div>
+    <div class="boss-ratio-sub">leads converted to opportunity</div>
+  </div>
+  <div class="boss-ratio-card">
+    <div class="boss-ratio-label">Closed Won / Leads</div>
+    <div class="boss-ratio-value" id="br-close-vs-leads">—%</div>
+    <div class="boss-ratio-sub">of all leads became closed won</div>
+  </div>
+  <div class="boss-ratio-card">
+    <div class="boss-ratio-label">Closed Won / Opps</div>
+    <div class="boss-ratio-value" id="br-close-vs-opps">—%</div>
+    <div class="boss-ratio-sub">of converted opps closed won</div>
+  </div>
+</div>
+
+<!-- Monthly trend chart -->
+<div class="chart-card" style="margin-bottom:20px;">
+  <div class="chart-title">Monthly Trend — Leads · Converted · Closed Won</div>
+  <canvas id="bossChart" height="80"></canvas>
+</div>
+
+<!-- ── SF Tasks ────────────────────────────────────────────────────────────── -->
+<div class="sf-tasks-grid">
+  <div class="sf-tasks-card">
+    <div class="sf-tasks-header">
+      <div>
+        <div class="sf-tasks-title">&#9989; Today's Completed Activities</div>
+        <div class="sf-tasks-meta" id="tasks-meta">Loading from Salesforce...</div>
+      </div>
+      <div class="sf-tasks-count" id="tasks-completed-count">—</div>
+    </div>
+    <div class="sf-tasks-type-row" id="tasks-type-row"></div>
+    <div class="sf-tasks-list" id="tasks-completed-list">
+      <div class="sf-tasks-empty">Loading...</div>
+    </div>
+  </div>
+  <div class="sf-tasks-card">
+    <div class="sf-tasks-header">
+      <div>
+        <div class="sf-tasks-title">&#128197; Upcoming Schedule</div>
+        <div class="sf-tasks-meta" id="scheduled-meta">&nbsp;</div>
+      </div>
+      <div class="sf-tasks-count" id="tasks-scheduled-count">—</div>
+    </div>
+    <div class="sf-tasks-list sf-tasks-list-scroll" id="tasks-scheduled-list">
+      <div class="sf-tasks-empty">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Manually Logged KPIs ──────────────────────────────────────────────── -->
+<div class="section-divider">Activity Tracking (Manual)</div>
+
 <div class="kpi-summary-row">
   <div class="kpi-summary-card">
     <div class="kpi-summary-label">Dials (MTD)</div>
@@ -36,104 +128,33 @@
   </div>
 </div>
 
-<!-- SF Tasks: Today's Activity + Upcoming -->
-<div class="sf-tasks-grid">
-
-  <!-- Completed Today -->
-  <div class="sf-tasks-card">
-    <div class="sf-tasks-header">
-      <div>
-        <div class="sf-tasks-title">&#9989; Today's Completed Activities</div>
-        <div class="sf-tasks-meta" id="tasks-meta">Loading from Salesforce...</div>
-      </div>
-      <div class="sf-tasks-count" id="tasks-completed-count">—</div>
-    </div>
-    <div class="sf-tasks-type-row" id="tasks-type-row"></div>
-    <div class="sf-tasks-list" id="tasks-completed-list">
-      <div class="sf-tasks-empty">Loading...</div>
-    </div>
-  </div>
-
-  <!-- Upcoming Schedule -->
-  <div class="sf-tasks-card">
-    <div class="sf-tasks-header">
-      <div>
-        <div class="sf-tasks-title">&#128197; Upcoming Schedule</div>
-        <div class="sf-tasks-meta" id="scheduled-meta">&nbsp;</div>
-      </div>
-      <div class="sf-tasks-count" id="tasks-scheduled-count">—</div>
-    </div>
-    <div class="sf-tasks-list sf-tasks-list-scroll" id="tasks-scheduled-list">
-      <div class="sf-tasks-empty">Loading...</div>
-    </div>
-  </div>
-
-</div>
-
-<!-- Funnel -->
 <div class="funnel-card">
   <div class="funnel-title">Conversion Funnel (Last 30 Days)</div>
   <div class="funnel-row">
-    <div class="funnel-stage" id="funnel-dials">
-      <div class="funnel-bar"></div>
-      <div class="funnel-label">Dials</div>
-      <div class="funnel-num">—</div>
-    </div>
+    <div class="funnel-stage" id="funnel-dials"><div class="funnel-bar"></div><div class="funnel-label">Dials</div><div class="funnel-num">—</div></div>
     <div class="funnel-arrow">&#8594;</div>
-    <div class="funnel-stage" id="funnel-connects">
-      <div class="funnel-bar"></div>
-      <div class="funnel-label">Connects</div>
-      <div class="funnel-num">—</div>
-    </div>
+    <div class="funnel-stage" id="funnel-connects"><div class="funnel-bar"></div><div class="funnel-label">Connects</div><div class="funnel-num">—</div></div>
     <div class="funnel-arrow">&#8594;</div>
-    <div class="funnel-stage" id="funnel-demos">
-      <div class="funnel-bar"></div>
-      <div class="funnel-label">Demos</div>
-      <div class="funnel-num">—</div>
-    </div>
+    <div class="funnel-stage" id="funnel-demos"><div class="funnel-bar"></div><div class="funnel-label">Demos</div><div class="funnel-num">—</div></div>
     <div class="funnel-arrow">&#8594;</div>
-    <div class="funnel-stage" id="funnel-closes">
-      <div class="funnel-bar"></div>
-      <div class="funnel-label">Closes</div>
-      <div class="funnel-num">—</div>
-    </div>
+    <div class="funnel-stage" id="funnel-closes"><div class="funnel-bar"></div><div class="funnel-label">Closes</div><div class="funnel-num">—</div></div>
   </div>
 </div>
 
-<!-- Charts -->
 <div class="chart-grid">
-  <div class="chart-card">
-    <div class="chart-title">Daily Dials (Last 30 Days)</div>
-    <canvas id="dialsChart"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Connect Rate % (Daily)</div>
-    <canvas id="connectRateChart"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Demos Set (Daily)</div>
-    <canvas id="demosChart"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Closes (Daily)</div>
-    <canvas id="closesChart"></canvas>
-  </div>
+  <div class="chart-card"><div class="chart-title">Daily Dials (Last 30 Days)</div><canvas id="dialsChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">Connect Rate % (Daily)</div><canvas id="connectRateChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">Demos Set (Daily)</div><canvas id="demosChart"></canvas></div>
+  <div class="chart-card"><div class="chart-title">Closes (Daily)</div><canvas id="closesChart"></canvas></div>
 </div>
 
-<!-- Log Table -->
 <div class="log-table-card">
   <div class="log-table-title">Activity Log</div>
   <table class="log-table">
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Dials</th>
-        <th>Connects</th>
-        <th>VMs</th>
-        <th>Connect %</th>
-        <th>Demos</th>
-        <th>Apps</th>
-        <th>Closes</th>
+        <th>Date</th><th>Dials</th><th>Connects</th><th>VMs</th>
+        <th>Connect %</th><th>Demos</th><th>Apps</th><th>Closes</th>
       </tr>
     </thead>
     <tbody id="kpi-table-body">
@@ -141,92 +162,130 @@
     </tbody>
   </table>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // KPI charts/table
-  fetch('/api/kpis')
-    .then(r => r.json())
-    .then(data => { if (window.renderKPIs) renderKPIs(data); });
+// ── Boss Metrics ──────────────────────────────────────────────────────────────
+let metricsData = {};
+let bossChart   = null;
+let currentPeriod = 'mtd';
 
-  // SF Tasks
-  fetch('/api/tasks')
-    .then(r => r.json())
-    .then(data => {
-      const completed  = data.completed  || [];
-      const scheduled  = data.scheduled  || [];
-      const refreshed  = data.refreshed_at || '';
+function setPeriod(p) {
+  currentPeriod = p;
+  document.getElementById('btn-mtd').classList.toggle('period-btn-active', p === 'mtd');
+  document.getElementById('btn-ytd').classList.toggle('period-btn-active', p === 'ytd');
+  renderBossMetrics();
+}
 
-      // Header counts
-      document.getElementById('tasks-completed-count').textContent = completed.length;
-      document.getElementById('tasks-scheduled-count').textContent = scheduled.length;
-      document.getElementById('tasks-meta').textContent =
-        refreshed ? 'Refreshed ' + refreshed : 'No data — hit Refresh SF Data';
+function renderBossMetrics() {
+  const d = metricsData[currentPeriod] || {};
+  document.getElementById('bm-leads').textContent      = d.total_leads     ?? '—';
+  document.getElementById('bm-opps').textContent       = d.converted_opps  ?? '—';
+  document.getElementById('bm-won').textContent        = d.closed_won      ?? '—';
+  document.getElementById('bm-conv-rate').textContent       = (d.conv_rate ?? '—') + '%';
+  document.getElementById('bm-close-rate-opps').textContent = (d.close_rate_vs_opps ?? '—') + '%';
+  document.getElementById('br-conv-rate').textContent        = (d.conv_rate ?? '—') + '%';
+  document.getElementById('br-close-vs-leads').textContent  = (d.close_rate_vs_leads ?? '—') + '%';
+  document.getElementById('br-close-vs-opps').textContent   = (d.close_rate_vs_opps ?? '—') + '%';
+}
 
-      // Type breakdown badges
-      const typeCounts = {};
-      completed.forEach(t => {
-        const sub = t.task_subtype || '';
-        const subj = (t.subject || '').toLowerCase();
-        let label = sub === 'Call' || subj.includes('call') ? 'Call'
-                  : sub === 'Email' || subj.includes('email') ? 'Email'
-                  : sub === 'LinkedIn' || subj.includes('linkedin') ? 'LinkedIn'
+function renderBossChart(monthly) {
+  const labels   = monthly.map(m => m.month);
+  const leads    = monthly.map(m => m.leads      || 0);
+  const opps     = monthly.map(m => m.converted  || 0);
+  const won      = monthly.map(m => m.closed_won || 0);
+  const ctx = document.getElementById('bossChart').getContext('2d');
+  if (bossChart) bossChart.destroy();
+  bossChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Leads',        data: leads, backgroundColor: 'rgba(30,64,175,.7)',  borderRadius: 4 },
+        { label: 'Converted',    data: opps,  backgroundColor: 'rgba(245,158,11,.75)', borderRadius: 4 },
+        { label: 'Closed Won',   data: won,   backgroundColor: 'rgba(16,185,129,.8)', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } }
+    }
+  });
+}
+
+fetch('/api/metrics')
+  .then(r => r.json())
+  .then(data => {
+    metricsData = { mtd: data.mtd || {}, ytd: data.ytd || {} };
+    const refreshed = data.refreshed_at || '';
+    document.getElementById('metrics-refreshed').textContent =
+      refreshed ? 'SF data as of ' + refreshed : 'No data — run Refresh SF Data';
+    renderBossMetrics();
+    if (data.monthly && data.monthly.length) renderBossChart(data.monthly);
+  })
+  .catch(() => {
+    document.getElementById('metrics-refreshed').textContent = 'Could not load metrics';
+  });
+
+// ── SF Tasks ──────────────────────────────────────────────────────────────────
+fetch('/api/tasks')
+  .then(r => r.json())
+  .then(data => {
+    const completed = data.completed || [];
+    const scheduled = data.scheduled || [];
+    const refreshed = data.refreshed_at || '';
+    document.getElementById('tasks-completed-count').textContent = completed.length;
+    document.getElementById('tasks-scheduled-count').textContent = scheduled.length;
+    document.getElementById('tasks-meta').textContent =
+      refreshed ? 'Refreshed ' + refreshed : 'No data — hit Refresh SF Data';
+
+    const typeCounts = {};
+    completed.forEach(t => {
+      const sub  = t.task_subtype || '';
+      const subj = (t.subject || '').toLowerCase();
+      const label = sub === 'Call'  || subj.includes('call')     ? 'Call'
+                  : sub === 'Email' || subj.includes('email')    ? 'Email'
+                  : subj.includes('linkedin')                    ? 'LinkedIn'
                   : 'Other';
-        typeCounts[label] = (typeCounts[label] || 0) + 1;
-      });
-      const typeRow = document.getElementById('tasks-type-row');
-      typeRow.innerHTML = Object.entries(typeCounts).map(([k,v]) =>
-        `<span class="sf-type-badge sf-type-${k.toLowerCase()}">${k} <strong>${v}</strong></span>`
-      ).join('') || '<span class="sf-tasks-empty-inline">No tasks completed today</span>';
+      typeCounts[label] = (typeCounts[label] || 0) + 1;
+    });
+    const typeRow = document.getElementById('tasks-type-row');
+    typeRow.innerHTML = Object.entries(typeCounts).map(([k,v]) =>
+      `<span class="sf-type-badge sf-type-${k.toLowerCase()}">${k} <strong>${v}</strong></span>`
+    ).join('') || '<span class="sf-tasks-empty-inline">No tasks completed today</span>';
 
-      // Completed list
-      const cList = document.getElementById('tasks-completed-list');
-      if (completed.length === 0) {
-        cList.innerHTML = '<div class="sf-tasks-empty">No tasks completed today yet</div>';
-      } else {
-        cList.innerHTML = completed.map(t => {
+    const cList = document.getElementById('tasks-completed-list');
+    cList.innerHTML = completed.length ? completed.map(t => {
+      const who  = t.who_name  ? `<span class="sf-task-who">${t.who_name}</span>`  : '';
+      const what = t.what_name ? `<span class="sf-task-what">${t.what_name}</span>` : '';
+      const desc = t.description ? `<div class="sf-task-desc">${t.description.substring(0,100)}</div>` : '';
+      return `<div class="sf-task-row"><div class="sf-task-main"><span class="sf-task-subj">${t.subject||'Task'}</span>${who}${what}</div>${desc}</div>`;
+    }).join('') : '<div class="sf-tasks-empty">No tasks completed today yet</div>';
+
+    const sList = document.getElementById('tasks-scheduled-list');
+    document.getElementById('scheduled-meta').textContent = scheduled.length ? `Next: ${scheduled[0].activity_date}` : '';
+    if (!scheduled.length) {
+      sList.innerHTML = '<div class="sf-tasks-empty">No upcoming tasks scheduled</div>';
+    } else {
+      const byDate = {};
+      scheduled.forEach(t => { const d = t.activity_date||'No date'; (byDate[d]=byDate[d]||[]).push(t); });
+      sList.innerHTML = Object.entries(byDate).map(([d,tasks]) =>
+        `<div class="sf-date-group"><div class="sf-date-label">${d}</div>${tasks.map(t => {
           const who  = t.who_name  ? `<span class="sf-task-who">${t.who_name}</span>`  : '';
           const what = t.what_name ? `<span class="sf-task-what">${t.what_name}</span>` : '';
-          const desc = t.description ? `<div class="sf-task-desc">${t.description.substring(0,100)}</div>` : '';
-          return `<div class="sf-task-row">
-            <div class="sf-task-main"><span class="sf-task-subj">${t.subject || 'Task'}</span>${who}${what}</div>
-            ${desc}
-          </div>`;
-        }).join('');
-      }
+          const pri  = t.priority === 'High' ? '<span class="sf-task-high">High</span>' : '';
+          return `<div class="sf-task-row"><div class="sf-task-main">${pri}<span class="sf-task-subj">${t.subject||'Task'}</span>${who}${what}</div></div>`;
+        }).join('')}</div>`
+      ).join('');
+    }
+  });
 
-      // Scheduled list
-      const sList = document.getElementById('tasks-scheduled-list');
-      document.getElementById('scheduled-meta').textContent =
-        scheduled.length ? `Next: ${scheduled[0].activity_date}` : '';
-      if (scheduled.length === 0) {
-        sList.innerHTML = '<div class="sf-tasks-empty">No upcoming tasks scheduled</div>';
-      } else {
-        // Group by date
-        const byDate = {};
-        scheduled.forEach(t => {
-          const d = t.activity_date || 'No date';
-          (byDate[d] = byDate[d] || []).push(t);
-        });
-        sList.innerHTML = Object.entries(byDate).map(([d, tasks]) => {
-          const rows = tasks.map(t => {
-            const who  = t.who_name  ? `<span class="sf-task-who">${t.who_name}</span>`  : '';
-            const what = t.what_name ? `<span class="sf-task-what">${t.what_name}</span>` : '';
-            const pri  = t.priority === 'High' ? '<span class="sf-task-high">High</span>' : '';
-            return `<div class="sf-task-row">
-              <div class="sf-task-main">${pri}<span class="sf-task-subj">${t.subject || 'Task'}</span>${who}${what}</div>
-            </div>`;
-          }).join('');
-          return `<div class="sf-date-group"><div class="sf-date-label">${d}</div>${rows}</div>`;
-        }).join('');
-      }
-    })
-    .catch(() => {
-      ['tasks-completed-list','tasks-scheduled-list'].forEach(id => {
-        document.getElementById(id).innerHTML =
-          '<div class="sf-tasks-empty">Could not load — refresh SF data first</div>';
-      });
-    });
+// ── Manually Logged KPIs ──────────────────────────────────────────────────────
+fetch('/api/kpis')
+  .then(r => r.json())
+  .then(data => { if (window.renderKPIs) renderKPIs(data); });
 </script>
 {% endblock %}
