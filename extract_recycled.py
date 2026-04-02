@@ -143,26 +143,82 @@ def main():
 
     lead_ids = [l['Id'] for l in leads_raw]
 
-    # Step 2: Pull all tasks in batches
+    # Build map of lead -> opp ID for converted leads
+    lead_to_opp = {l['Id']: l['ConvertedOpportunityId']
+                   for l in leads_raw
+                   if l.get('IsConverted') and l.get('ConvertedOpportunityId')}
+    opp_to_lead = {v: k for k, v in lead_to_opp.items()}
+    active_opp_ids = list(lead_to_opp.values())
+
+    # Step 2: Pull all tasks in batches (leads + opp activities)
     print("\n[2/3] Querying activities (batched)...")
     all_tasks = []
     batch_size = 200
+
+    # 2a: Tasks on lead records (WhoId)
     for i in range(0, len(lead_ids), batch_size):
         batch = lead_ids[i:i + batch_size]
         id_list = "','".join(batch)
         tasks = run_soql(
-            f"SELECT Id, WhoId, Subject, Description, ActivityDate, TaskSubtype, Status "
+            f"SELECT Id, WhoId, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status "
             f"FROM Task WHERE WhoId IN ('{id_list}') "
             f"ORDER BY ActivityDate DESC"
         )
         all_tasks.extend(tasks)
         batch_num = i // batch_size + 1
         total_batches = (len(lead_ids) + batch_size - 1) // batch_size
-        print(f"  Batch {batch_num}/{total_batches}: {len(batch)} leads → {len(tasks)} tasks")
+        print(f"  Lead batch {batch_num}/{total_batches}: {len(batch)} leads → {len(tasks)} tasks")
 
-    print(f"  Total tasks: {len(all_tasks)}")
+    # 2b: Tasks on converted opportunity records (WhatId)
+    opp_tasks_by_lead = defaultdict(list)
+    if active_opp_ids:
+        print(f"  Pulling activities from {len(active_opp_ids)} converted opportunities...")
+        for i in range(0, len(active_opp_ids), batch_size):
+            batch = active_opp_ids[i:i + batch_size]
+            id_list = "','".join(batch)
+            opp_tasks = run_soql(
+                f"SELECT Id, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status "
+                f"FROM Task WHERE WhatId IN ('{id_list}') "
+                f"ORDER BY ActivityDate DESC"
+            )
+            for t in opp_tasks:
+                lead_id = opp_to_lead.get(t.get('WhatId'))
+                if lead_id:
+                    opp_tasks_by_lead[lead_id].append(t)
+        total_opp_tasks = sum(len(v) for v in opp_tasks_by_lead.values())
+        print(f"  Found {total_opp_tasks} opportunity tasks across converted leads")
 
-    # Group tasks by lead
+    # 2c: Pull ContentNotes for opp records
+    opp_notes_by_lead = defaultdict(list)
+    if active_opp_ids:
+        print(f"  Pulling notes from converted opportunities...")
+        for i in range(0, len(active_opp_ids), batch_size):
+            batch = active_opp_ids[i:i + batch_size]
+            id_list = "','".join(batch)
+            doc_links = run_soql(
+                f"SELECT ContentDocumentId, LinkedEntityId "
+                f"FROM ContentDocumentLink WHERE LinkedEntityId IN ('{id_list}')"
+            )
+            if doc_links:
+                doc_ids = list(set(d['ContentDocumentId'] for d in doc_links))
+                entity_map = {d['ContentDocumentId']: d['LinkedEntityId'] for d in doc_links}
+                for j in range(0, len(doc_ids), batch_size):
+                    doc_batch = doc_ids[j:j + batch_size]
+                    doc_id_list = "','".join(doc_batch)
+                    notes = run_soql(
+                        f"SELECT Id, Title, TextPreview, CreatedDate "
+                        f"FROM ContentNote WHERE Id IN ('{doc_id_list}') "
+                        f"ORDER BY CreatedDate DESC"
+                    )
+                    for note in notes:
+                        opp_id = entity_map.get(note['Id'])
+                        lead_id = opp_to_lead.get(opp_id)
+                        if lead_id:
+                            opp_notes_by_lead[lead_id].append(note)
+
+    print(f"  Total lead tasks: {len(all_tasks)}")
+
+    # Group lead tasks by lead
     tasks_by_lead = defaultdict(list)
     for t in all_tasks:
         tasks_by_lead[t['WhoId']].append(t)
@@ -174,21 +230,37 @@ def main():
     for lead in leads_raw:
         lid = lead['Id']
         lead_tasks = tasks_by_lead.get(lid, [])
+        opp_tasks  = opp_tasks_by_lead.get(lid, [])
+        opp_notes  = opp_notes_by_lead.get(lid, [])
 
-        # Determine category
-        if not lead_tasks:
+        # For converted leads: combine lead tasks + opp tasks + opp notes
+        # Sort combined by date desc
+        all_lead_activities = lead_tasks + opp_tasks
+        all_lead_activities.sort(key=lambda t: t.get('ActivityDate') or '', reverse=True)
+
+        # Add notes as pseudo-activities
+        for note in opp_notes:
+            all_lead_activities.append({
+                'Subject': note.get('Title') or 'Note',
+                'Description': note.get('TextPreview') or '',
+                'ActivityDate': (note.get('CreatedDate') or '')[:10],
+                'TaskSubtype': 'Note',
+            })
+
+        # Determine category based on combined activity
+        if not all_lead_activities:
             category = 'no_activity'
-        elif any(had_real_conversation(t) for t in lead_tasks):
+        elif any(had_real_conversation(t) for t in all_lead_activities):
             category = 'had_conversation'
         else:
             category = 'no_contact'
 
         # Build attempt summary
-        attempt_count = len(lead_tasks)
-        last_attempt = lead_tasks[0].get('ActivityDate') if lead_tasks else None
+        attempt_count = len(all_lead_activities)
+        last_attempt = all_lead_activities[0].get('ActivityDate') if all_lead_activities else None
 
         summaries = []
-        for t in lead_tasks[:5]:
+        for t in all_lead_activities[:5]:
             subj = (t.get('Subject') or '')[:40]
             desc = (t.get('Description') or '')[:40].replace('\n', ' ')
             entry = subj
