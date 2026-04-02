@@ -195,11 +195,13 @@ function openColorPicker(trigger) {
   activeTrigger = trigger;
   const rect = trigger.getBoundingClientRect();
   cpPopup.style.display = 'flex';
-  // Position below the dot, centered
+  // position: fixed is viewport-relative — no scroll offset needed
   const popW = cpPopup.offsetWidth || 116;
-  let left = rect.left + rect.width / 2 - popW / 2 + window.scrollX;
-  let top  = rect.bottom + 6 + window.scrollY;
-  cpPopup.style.left = Math.max(4, left) + 'px';
+  let left = rect.left + rect.width / 2 - popW / 2;
+  let top  = rect.bottom + 6;
+  // keep within viewport edges
+  left = Math.max(4, Math.min(left, window.innerWidth - popW - 4));
+  cpPopup.style.left = left + 'px';
   cpPopup.style.top  = top + 'px';
 }
 
