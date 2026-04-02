@@ -123,7 +123,7 @@ def main():
     converted_opp_ids = [l['ConvertedOpportunityId'] for l in leads_raw
                          if l.get('IsConverted') and l.get('ConvertedOpportunityId')]
 
-    closed_lost_opp_ids = set()
+    excluded_opp_ids = set()
     if converted_opp_ids:
         print("  Checking converted opportunity stages...")
         batch_size_opps = 200
@@ -132,13 +132,13 @@ def main():
             id_list = "','".join(batch)
             opps = run_soql(
                 f"SELECT Id, StageName FROM Opportunity "
-                f"WHERE Id IN ('{id_list}') AND StageName = 'Closed Lost'"
+                f"WHERE Id IN ('{id_list}') AND StageName IN ('Closed Lost', 'Closed Won')"
             )
-            closed_lost_opp_ids.update(o['Id'] for o in opps)
-        print(f"  Excluding {len(closed_lost_opp_ids)} Closed Lost opportunities")
+            excluded_opp_ids.update(o['Id'] for o in opps)
+        print(f"  Excluding {len(excluded_opp_ids)} Closed Lost/Won opportunities")
 
     leads_raw = [l for l in leads_raw
-                 if l.get('ConvertedOpportunityId') not in closed_lost_opp_ids]
+                 if l.get('ConvertedOpportunityId') not in excluded_opp_ids]
     print(f"  {len(leads_raw)} leads after exclusions")
 
     lead_ids = [l['Id'] for l in leads_raw]
