@@ -114,9 +114,32 @@ def main():
         f"AND CountryCode = 'US' "
         f"AND Email != 'steve.maraschiello@shift4.com' "
         f"AND Status != 'Unqualified' "
-        f"AND Lead_Created_Date__c < LAST_N_DAYS:4"
+        f"AND Lead_Created_Date__c < LAST_N_DAYS:4 "
+        f"AND Loss_Reason__c NOT IN ('Duplicate lead','Incorrect contact information','Not Applicable','Spam')"
     )
     print(f"  Found {len(leads_raw)} recycled leads")
+
+    # Filter out converted leads whose opportunity is Closed Lost
+    converted_opp_ids = [l['ConvertedOpportunityId'] for l in leads_raw
+                         if l.get('IsConverted') and l.get('ConvertedOpportunityId')]
+
+    closed_lost_opp_ids = set()
+    if converted_opp_ids:
+        print("  Checking converted opportunity stages...")
+        batch_size_opps = 200
+        for i in range(0, len(converted_opp_ids), batch_size_opps):
+            batch = converted_opp_ids[i:i + batch_size_opps]
+            id_list = "','".join(batch)
+            opps = run_soql(
+                f"SELECT Id, StageName FROM Opportunity "
+                f"WHERE Id IN ('{id_list}') AND StageName = 'Closed Lost'"
+            )
+            closed_lost_opp_ids.update(o['Id'] for o in opps)
+        print(f"  Excluding {len(closed_lost_opp_ids)} Closed Lost opportunities")
+
+    leads_raw = [l for l in leads_raw
+                 if l.get('ConvertedOpportunityId') not in closed_lost_opp_ids]
+    print(f"  {len(leads_raw)} leads after exclusions")
 
     lead_ids = [l['Id'] for l in leads_raw]
 
