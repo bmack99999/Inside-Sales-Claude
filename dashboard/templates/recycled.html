@@ -112,18 +112,9 @@
           data-activity="{{ l.last_activity_date or '' }}"
           data-attempts="{{ l.attempt_count or 0 }}">
         <td class="color-cell">
-          <div class="color-picker-wrap" data-sf-id="{{ l.id }}">
-            <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}" onclick="toggleColorPicker(this)" title="Set color"></div>
-            <div class="color-picker-popup">
-              <div class="cp-swatch cp-yellow"      onclick="setLeadColor(this,'yellow')"      title="Yellow"></div>
-              <div class="cp-swatch cp-red"         onclick="setLeadColor(this,'red')"         title="Red"></div>
-              <div class="cp-swatch cp-blue"        onclick="setLeadColor(this,'blue')"        title="Blue"></div>
-              <div class="cp-swatch cp-light_green" onclick="setLeadColor(this,'light_green')" title="Light Green"></div>
-              <div class="cp-swatch cp-dark_green"  onclick="setLeadColor(this,'dark_green')"  title="Dark Green"></div>
-              <div class="cp-swatch cp-purple"      onclick="setLeadColor(this,'purple')"      title="Purple"></div>
-              <div class="cp-swatch cp-clear"       onclick="setLeadColor(this,'')"            title="Clear">✕</div>
-            </div>
-          </div>
+          <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
+               data-sf-id="{{ l.id }}"
+               onclick="openColorPicker(this)" title="Set color"></div>
         </td>
         <td class="recycled-name">
           <a href="{{ sf_base }}/lightning/r/Lead/{{ l.id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
@@ -164,48 +155,76 @@
 </div>
 {% endif %}
 
+<!-- Shared color picker popup — appended to body to avoid overflow clipping -->
+<div id="colorPickerPopup" style="display:none;">
+  <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
+  <div class="cp-swatch cp-red"         data-color="red"         title="Red"></div>
+  <div class="cp-swatch cp-blue"        data-color="blue"        title="Blue"></div>
+  <div class="cp-swatch cp-light_green" data-color="light_green" title="Light Green"></div>
+  <div class="cp-swatch cp-dark_green"  data-color="dark_green"  title="Dark Green"></div>
+  <div class="cp-swatch cp-purple"      data-color="purple"      title="Purple"></div>
+  <div class="cp-swatch cp-clear"       data-color=""            title="Clear">✕</div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-// ── Color picker ──────────────────────────────────────────────────────────────
-function toggleColorPicker(trigger) {
-  // Close any other open pickers
-  document.querySelectorAll('.color-picker-popup.open').forEach(p => {
-    if (p !== trigger.nextElementSibling) p.classList.remove('open');
-  });
-  trigger.nextElementSibling.classList.toggle('open');
+// ── Color picker (fixed-position shared popup) ────────────────────────────────
+const cpPopup = document.getElementById('colorPickerPopup');
+let activeTrigger = null;
+
+// Move popup to body so table overflow never clips it
+document.body.appendChild(cpPopup);
+
+function openColorPicker(trigger) {
+  if (activeTrigger === trigger && cpPopup.style.display !== 'none') {
+    closeColorPicker(); return;
+  }
+  activeTrigger = trigger;
+  const rect = trigger.getBoundingClientRect();
+  cpPopup.style.display = 'flex';
+  // Position below the dot, centered
+  const popW = cpPopup.offsetWidth || 116;
+  let left = rect.left + rect.width / 2 - popW / 2 + window.scrollX;
+  let top  = rect.bottom + 6 + window.scrollY;
+  cpPopup.style.left = Math.max(4, left) + 'px';
+  cpPopup.style.top  = top + 'px';
+}
+
+function closeColorPicker() {
+  cpPopup.style.display = 'none';
+  activeTrigger = null;
 }
 
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.color-picker-wrap')) {
-    document.querySelectorAll('.color-picker-popup.open').forEach(p => p.classList.remove('open'));
+  if (!e.target.closest('#colorPickerPopup') && !e.target.classList.contains('color-trigger')) {
+    closeColorPicker();
   }
 });
 
-function setLeadColor(swatch, color) {
-  const wrap   = swatch.closest('.color-picker-wrap');
-  const sfId   = wrap.dataset.sfId;
-  const trigger = wrap.querySelector('.color-trigger');
-  const row    = wrap.closest('.recycled-row');
+cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
+  swatch.addEventListener('click', function() {
+    if (!activeTrigger) return;
+    const color  = this.dataset.color;
+    const sfId   = activeTrigger.dataset.sfId;
+    const row    = activeTrigger.closest('.recycled-row');
 
-  // Update trigger dot color
-  trigger.className = 'color-trigger' + (color ? ' cp-' + color : '');
+    // Update dot
+    activeTrigger.className = 'color-trigger' + (color ? ' cp-' + color : '');
+    // Update row highlight
+    row.className = row.className.replace(/\brow-color-\S+/g, '').trim();
+    if (color) row.classList.add('row-color-' + color);
 
-  // Update row highlight
-  row.className = row.className.replace(/\brow-color-\S+/g, '').trim();
-  if (color) row.classList.add('row-color-' + color);
+    closeColorPicker();
 
-  // Close popup
-  wrap.querySelector('.color-picker-popup').classList.remove('open');
-
-  // Persist
-  fetch('/api/lead_color', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({sf_id: sfId, color: color})
+    fetch('/api/lead_color', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sf_id: sfId, color: color})
+    });
   });
-}
+});
 
 function filterRecycled(query) {
   query = query.toLowerCase();

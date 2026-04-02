@@ -794,7 +794,7 @@ body {
 .color-th  { width: 28px !important; padding: 0 !important; }
 .color-cell { width: 28px; padding: 4px 4px !important; vertical-align: middle !important; }
 
-.color-picker-wrap { position: relative; display: flex; justify-content: center; }
+.color-picker-wrap { display: flex; justify-content: center; }
 
 .color-trigger {
   width: 14px; height: 14px; border-radius: 50%;
@@ -812,15 +812,14 @@ body {
 .color-trigger.cp-dark_green  { background: #2E7D32; border-color: #1b5e20; }
 .color-trigger.cp-purple      { background: #8E24AA; border-color: #6a1b9a; }
 
-/* Popup */
-.color-picker-popup {
-  display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%);
+/* Shared popup — fixed to viewport so table overflow never clips it */
+#colorPickerPopup {
+  position: fixed;
   background: var(--card-bg); border: 1px solid var(--border);
   border-radius: 8px; padding: 6px; gap: 5px;
-  flex-wrap: wrap; width: 108px; box-shadow: 0 4px 12px rgba(0,0,0,.15);
-  z-index: 999;
+  flex-wrap: wrap; width: 116px; box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  z-index: 9999;
 }
-.color-picker-popup.open { display: flex; }
 
 .cp-swatch {
   width: 22px; height: 22px; border-radius: 50%;
