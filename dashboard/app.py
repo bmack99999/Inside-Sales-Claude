@@ -458,7 +458,8 @@ def recycled():
     if converted == 'leads':
         query = query.filter_by(is_converted=False)
     elif converted == 'opps':
-        query = query.filter_by(is_converted=True)
+        query = query.filter(RecycledLead.is_converted == True,
+                             RecycledLead.converted_opp_id != None)
 
     leads = [l.to_dict() for l in query.all()]
 
@@ -477,7 +478,8 @@ def recycled():
     base = RecycledLead.query.filter_by(category=category)
     converted_counts = {
         'leads': base.filter_by(is_converted=False).count(),
-        'opps':  base.filter_by(is_converted=True).count(),
+        'opps':  base.filter(RecycledLead.is_converted == True,
+                             RecycledLead.converted_opp_id != None).count(),
         'all':   base.count(),
     }
 
