@@ -313,35 +313,33 @@ def get_last_activity_type(activities):
 
 def extract_boss_metrics():
     """Pull leads received, converted to opp, and closed won for boss reporting."""
-    from datetime import timedelta
-    today      = date.today()
+    today       = date.today()
     month_start = today.replace(day=1).isoformat()
-    year_start  = today.replace(month=1, day=1).isoformat()
-    year_ago    = (today - timedelta(days=365)).isoformat()
+    START_DATE  = '2026-03-23'   # Bryce's first day at Shift4
 
     print("\n[Metrics] Querying boss metrics...")
 
-    # All leads created in the last 12 months (including unqualified)
+    # All leads created since start date
     leads_raw = run_soql(
         f"SELECT Id, Lead_Created_Date__c, Status "
         f"FROM Lead WHERE OwnerId = '{USER_ID}' "
-        f"AND Lead_Created_Date__c >= {year_ago}"
+        f"AND Lead_Created_Date__c >= {START_DATE}"
     )
 
-    # Leads converted to opp in the last 12 months
+    # Leads converted to opp since start date
     converted_raw = run_soql(
         f"SELECT Id, ConvertedDate "
         f"FROM Lead WHERE OwnerId = '{USER_ID}' "
         f"AND IsConverted = true "
-        f"AND ConvertedDate >= {year_ago}"
+        f"AND ConvertedDate >= {START_DATE}"
     )
 
-    # Closed Won opportunities in the last 12 months
+    # Closed Won opportunities since start date
     closed_won_raw = run_soql(
         f"SELECT Id, CloseDate, Name "
         f"FROM Opportunity WHERE OwnerId = '{USER_ID}' "
         f"AND StageName = 'Closed Won' "
-        f"AND CloseDate >= {year_ago}"
+        f"AND CloseDate >= {START_DATE}"
     )
 
     def period_counts(leads, converted, closed, since):
@@ -388,13 +386,17 @@ def extract_boss_metrics():
 
     result = {
         'refreshed_at': datetime.now().strftime('%Y-%m-%d %I:%M %p'),
-        'mtd': period_counts(leads_raw, converted_raw, closed_won_raw, month_start),
-        'ytd': period_counts(leads_raw, converted_raw, closed_won_raw, year_start),
+        'start_date':   START_DATE,
+        'mtd':   period_counts(leads_raw, converted_raw, closed_won_raw, month_start),
+        'ytd':   period_counts(leads_raw, converted_raw, closed_won_raw, START_DATE),
         'monthly': monthly_list,
     }
-    print(f"  MTD → leads: {result['mtd']['total_leads']}, "
+    print(f"  MTD  → leads: {result['mtd']['total_leads']}, "
           f"opps: {result['mtd']['converted_opps']}, "
           f"closed won: {result['mtd']['closed_won']}")
+    print(f"  Since start → leads: {result['ytd']['total_leads']}, "
+          f"opps: {result['ytd']['converted_opps']}, "
+          f"closed won: {result['ytd']['closed_won']}")
     return result
 
 
