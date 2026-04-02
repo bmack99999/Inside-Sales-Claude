@@ -764,6 +764,28 @@ body {
 }
 .recycled-notes-cell { max-width: 220px; }
 .recycled-notes { font-size: 12px; color: var(--text-light); }
+.recycled-converted-toggle {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.converted-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: var(--radius);
+  background: var(--card-bg); border: 1px solid var(--border);
+  color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+  transition: background 0.15s;
+}
+.converted-btn:hover { background: var(--bg); border-color: var(--navy-light); }
+.converted-btn-active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.converted-btn-active:hover { background: var(--navy-light); }
+.converted-btn-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 20px; border-radius: 10px; padding: 0 5px;
+  font-size: 11px; font-weight: 700; background: rgba(0,0,0,0.08);
+}
+.converted-btn-active .converted-btn-count { background: rgba(255,255,255,0.2); }
+.recycled-opp-link { font-size: 12px; color: var(--navy-light); text-decoration: none; white-space: nowrap; }
+.recycled-opp-link:hover { text-decoration: underline; }
+
 .recycled-table thead th.sortable { cursor: pointer; user-select: none; }
 .recycled-table thead th.sortable:hover { color: var(--navy); }
 .sort-arrow { font-size: 10px; margin-left: 2px; }

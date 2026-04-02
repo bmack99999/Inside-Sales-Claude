@@ -39,10 +39,30 @@
   </a>
 </div>
 
+<!-- Converted Toggle -->
+<div class="recycled-converted-toggle">
+  <a href="{{ url_for('recycled', category=category, converted='leads', phone_only=phone_only|int, source=source_filter) }}"
+     class="converted-btn {{ 'converted-btn-active' if converted == 'leads' }}">
+    &#128100; Leads Only
+    <span class="converted-btn-count">{{ converted_counts.leads }}</span>
+  </a>
+  <a href="{{ url_for('recycled', category=category, converted='opps', phone_only=phone_only|int, source=source_filter) }}"
+     class="converted-btn {{ 'converted-btn-active' if converted == 'opps' }}">
+    &#128200; Converted to Opp
+    <span class="converted-btn-count">{{ converted_counts.opps }}</span>
+  </a>
+  <a href="{{ url_for('recycled', category=category, converted='all', phone_only=phone_only|int, source=source_filter) }}"
+     class="converted-btn {{ 'converted-btn-active' if converted == 'all' }}">
+    All
+    <span class="converted-btn-count">{{ converted_counts.all }}</span>
+  </a>
+</div>
+
 <!-- Filters -->
 <div class="recycled-filters">
   <form method="get" action="{{ url_for('recycled') }}" class="recycled-filter-form">
     <input type="hidden" name="category" value="{{ category }}">
+    <input type="hidden" name="converted" value="{{ converted }}">
 
     <label class="recycled-filter-check">
       <input type="checkbox" name="phone_only" value="1" {{ 'checked' if phone_only }}
@@ -57,7 +77,7 @@
       {% endfor %}
     </select>
 
-    <span class="recycled-filter-count">Showing {{ leads|length }} leads</span>
+    <span class="recycled-filter-count">Showing {{ leads|length }} records</span>
   </form>
 
   <div class="recycled-search-box">
@@ -80,6 +100,7 @@
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
         <th>Notes</th>
+        {% if converted != 'leads' %}<th>Opportunity</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -107,6 +128,14 @@
             <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:60] }}{{ '...' if l.attempt_summary|length > 60 }}</span>
           {% else %}—{% endif %}
         </td>
+        {% if converted != 'leads' %}
+        <td>
+          {% if l.converted_opp_id %}
+            <a href="{{ sf_base }}/lightning/r/Opportunity/{{ l.converted_opp_id }}/view"
+               target="_blank" class="recycled-opp-link">&#128200; View Opp</a>
+          {% else %}—{% endif %}
+        </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
