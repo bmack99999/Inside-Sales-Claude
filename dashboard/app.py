@@ -8,7 +8,7 @@ from dateutil import parser as dateutil_parser
 
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
-                    RecycledLead, RefreshLog, SkippedToday)
+                    RecycledLead, RefreshLog, SkippedToday, LeadColor)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,6 +16,14 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+    # Migration: add color column to recycled_leads if it doesn't exist yet
+    from sqlalchemy import text as sa_text
+    with db.engine.connect() as _conn:
+        try:
+            _conn.execute(sa_text("ALTER TABLE recycled_leads ADD COLUMN color TEXT"))
+            _conn.commit()
+        except Exception:
+            pass  # column already exists
 
 SF_BASE = "https://crmcredorax.lightning.force.com"
 
@@ -543,8 +551,12 @@ def api_ingest():
 
     elif ingest_type == 'recycled':
         RecycledLead.query.delete()
+        # Re-apply any saved colors so they survive re-scans
+        color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
         for item in data.get('leads', []):
-            db.session.merge(RecycledLead(**item))
+            rl = RecycledLead(**item)
+            rl.color = color_map.get(item['id'])
+            db.session.add(rl)
 
         info = data.get('refresh_info', {})
         db.session.add(RefreshLog(
@@ -559,6 +571,34 @@ def api_ingest():
         return jsonify({'ok': True, 'leads': len(data.get('leads', []))})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
+
+
+@app.route('/api/lead_color', methods=['POST'])
+def set_lead_color():
+    data  = request.get_json() or {}
+    sf_id = data.get('sf_id', '').strip()
+    color = data.get('color', '').strip() or None   # empty string → clear
+    if not sf_id:
+        return jsonify({'error': 'sf_id required'}), 400
+
+    # Persist in LeadColor so it survives re-scans
+    lc = LeadColor.query.get(sf_id)
+    if color:
+        if lc:
+            lc.color = color
+        else:
+            db.session.add(LeadColor(sf_id=sf_id, color=color))
+    else:
+        if lc:
+            db.session.delete(lc)
+
+    # Also update the live RecycledLead row immediately
+    rl = RecycledLead.query.get(sf_id)
+    if rl:
+        rl.color = color
+
+    db.session.commit()
+    return jsonify({'ok': True, 'sf_id': sf_id, 'color': color})
 
 
 if __name__ == '__main__':

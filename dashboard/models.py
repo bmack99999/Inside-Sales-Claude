@@ -145,9 +145,21 @@ class RecycledLead(db.Model):
     last_attempt       = db.Column(db.Text)
     attempt_summary    = db.Column(db.Text)
     extracted_at       = db.Column(db.Text)
+    color              = db.Column(db.Text)  # yellow | red | blue | light_green | dark_green | purple
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class LeadColor(db.Model):
+    """Persists user-assigned colors across re-scans, keyed by Salesforce ID."""
+    __tablename__ = 'lead_colors'
+
+    sf_id  = db.Column(db.Text, primary_key=True)
+    color  = db.Column(db.Text, nullable=False)
+
+    def to_dict(self):
+        return {'sf_id': self.sf_id, 'color': self.color}
 
 
 class RefreshLog(db.Model):
