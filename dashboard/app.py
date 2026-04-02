@@ -566,9 +566,11 @@ def api_ingest():
                         'opps': len(data.get('opps', []))})
 
     elif ingest_type == 'recycled':
-        RecycledLead.query.delete()
-        # Re-apply any saved colors so they survive re-scans
+        # Load saved colors BEFORE deleting so they survive the re-scan
         color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
+        # synchronize_session=False: skip identity-map sync since we're replacing everything
+        RecycledLead.query.delete(synchronize_session=False)
+        db.session.flush()
         for item in data.get('leads', []):
             rl = RecycledLead(**item)
             rl.color = color_map.get(item['id'])
