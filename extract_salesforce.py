@@ -321,9 +321,9 @@ def extract_boss_metrics():
 
     print("\n[Metrics] Querying boss metrics...")
 
-    # All leads created in the last 12 months
+    # All leads created in the last 12 months (including unqualified)
     leads_raw = run_soql(
-        f"SELECT Id, Lead_Created_Date__c "
+        f"SELECT Id, Lead_Created_Date__c, Status "
         f"FROM Lead WHERE OwnerId = '{USER_ID}' "
         f"AND Lead_Created_Date__c >= {year_ago}"
     )
@@ -345,26 +345,38 @@ def extract_boss_metrics():
     )
 
     def period_counts(leads, converted, closed, since):
-        l = [r for r in leads     if (r.get('Lead_Created_Date__c') or '') >= since]
-        c = [r for r in converted if (r.get('ConvertedDate')         or '') >= since]
-        w = [r for r in closed    if (r.get('CloseDate')             or '') >= since]
+        l  = [r for r in leads     if (r.get('Lead_Created_Date__c') or '') >= since]
+        c  = [r for r in converted if (r.get('ConvertedDate')         or '') >= since]
+        w  = [r for r in closed    if (r.get('CloseDate')             or '') >= since]
+        uq = [r for r in l if (r.get('Status') or '').lower() == 'unqualified']
         tl = len(l)
         tc = len(c)
         tw = len(w)
+        tu = len(uq)
+        workable = tl - tu   # leads that weren't immediately unqualified
         return {
-            'total_leads':            tl,
-            'converted_opps':         tc,
-            'closed_won':             tw,
-            'conv_rate':              round(tc / tl * 100, 1) if tl else 0,
-            'close_rate_vs_leads':    round(tw / tl * 100, 1) if tl else 0,
-            'close_rate_vs_opps':     round(tw / tc * 100, 1) if tc else 0,
+            'total_leads':               tl,
+            'converted_opps':            tc,
+            'closed_won':                tw,
+            'unqualified':               tu,
+            'workable_leads':            workable,
+            'unqualified_rate':          round(tu / tl * 100, 1) if tl else 0,
+            'conv_rate':                 round(tc / tl * 100, 1) if tl else 0,
+            'conv_rate_workable':        round(tc / workable * 100, 1) if workable else 0,
+            'close_rate_vs_leads':       round(tw / tl * 100, 1) if tl else 0,
+            'close_rate_vs_workable':    round(tw / workable * 100, 1) if workable else 0,
+            'close_rate_vs_opps':        round(tw / tc * 100, 1) if tc else 0,
         }
 
     # Monthly breakdown for chart (last 12 months)
     monthly = {}
     for r in leads_raw:
         m = (r.get('Lead_Created_Date__c') or '')[:7]  # YYYY-MM
-        if m: monthly.setdefault(m, {'leads': 0, 'converted': 0, 'closed_won': 0})['leads'] += 1
+        if m:
+            monthly.setdefault(m, {'leads': 0, 'unqualified': 0, 'converted': 0, 'closed_won': 0})
+            monthly[m]['leads'] += 1
+            if (r.get('Status') or '').lower() == 'unqualified':
+                monthly[m]['unqualified'] += 1
     for r in converted_raw:
         m = (r.get('ConvertedDate') or '')[:7]
         if m: monthly.setdefault(m, {'leads': 0, 'converted': 0, 'closed_won': 0})['converted'] += 1

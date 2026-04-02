@@ -63,6 +63,30 @@
   </div>
 </div>
 
+<!-- Unqualified breakdown -->
+<div class="boss-ratio-row boss-unq-row">
+  <div class="boss-ratio-card boss-ratio-unq">
+    <div class="boss-ratio-label">Unqualified Leads</div>
+    <div class="boss-ratio-value" id="br-unqualified">—</div>
+    <div class="boss-ratio-sub">of <span id="br-total-leads2">—</span> total leads received</div>
+  </div>
+  <div class="boss-ratio-card boss-ratio-unq">
+    <div class="boss-ratio-label">Unqualified Rate</div>
+    <div class="boss-ratio-value" id="br-unq-rate">—%</div>
+    <div class="boss-ratio-sub">leads marked unqualified</div>
+  </div>
+  <div class="boss-ratio-card boss-ratio-unq">
+    <div class="boss-ratio-label">Conv Rate (Workable)</div>
+    <div class="boss-ratio-value" id="br-conv-workable">—%</div>
+    <div class="boss-ratio-sub">of <span id="br-workable">—</span> workable leads converted</div>
+  </div>
+  <div class="boss-ratio-card boss-ratio-unq">
+    <div class="boss-ratio-label">Close Rate (Workable)</div>
+    <div class="boss-ratio-value" id="br-close-workable">—%</div>
+    <div class="boss-ratio-sub">of workable leads closed won</div>
+  </div>
+</div>
+
 <!-- Monthly trend chart -->
 <div class="chart-card" style="margin-bottom:20px;">
   <div class="chart-title">Monthly Trend — Leads · Converted · Closed Won</div>
@@ -181,14 +205,23 @@ function setPeriod(p) {
 
 function renderBossMetrics() {
   const d = metricsData[currentPeriod] || {};
-  document.getElementById('bm-leads').textContent      = d.total_leads     ?? '—';
-  document.getElementById('bm-opps').textContent       = d.converted_opps  ?? '—';
-  document.getElementById('bm-won').textContent        = d.closed_won      ?? '—';
-  document.getElementById('bm-conv-rate').textContent       = (d.conv_rate ?? '—') + '%';
+  // Funnel
+  document.getElementById('bm-leads').textContent      = d.total_leads    ?? '—';
+  document.getElementById('bm-opps').textContent       = d.converted_opps ?? '—';
+  document.getElementById('bm-won').textContent        = d.closed_won     ?? '—';
+  document.getElementById('bm-conv-rate').textContent       = (d.conv_rate          ?? '—') + '%';
   document.getElementById('bm-close-rate-opps').textContent = (d.close_rate_vs_opps ?? '—') + '%';
-  document.getElementById('br-conv-rate').textContent        = (d.conv_rate ?? '—') + '%';
-  document.getElementById('br-close-vs-leads').textContent  = (d.close_rate_vs_leads ?? '—') + '%';
-  document.getElementById('br-close-vs-opps').textContent   = (d.close_rate_vs_opps ?? '—') + '%';
+  // Ratio strip 1
+  document.getElementById('br-conv-rate').textContent        = (d.conv_rate           ?? '—') + '%';
+  document.getElementById('br-close-vs-leads').textContent   = (d.close_rate_vs_leads ?? '—') + '%';
+  document.getElementById('br-close-vs-opps').textContent    = (d.close_rate_vs_opps  ?? '—') + '%';
+  // Unqualified strip
+  document.getElementById('br-unqualified').textContent   = d.unqualified      ?? '—';
+  document.getElementById('br-unq-rate').textContent      = (d.unqualified_rate ?? '—') + '%';
+  document.getElementById('br-conv-workable').textContent  = (d.conv_rate_workable  ?? '—') + '%';
+  document.getElementById('br-close-workable').textContent = (d.close_rate_vs_workable ?? '—') + '%';
+  document.getElementById('br-total-leads2').textContent  = d.total_leads   ?? '—';
+  document.getElementById('br-workable').textContent      = d.workable_leads ?? '—';
 }
 
 function renderBossChart(monthly) {
