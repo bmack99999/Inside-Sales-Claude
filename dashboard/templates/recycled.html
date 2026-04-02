@@ -77,13 +77,22 @@
       {% endfor %}
     </select>
 
-    <span class="recycled-filter-count">Showing {{ leads|length }} records</span>
   </form>
+
+  <div class="recycled-date-range">
+    <label class="recycled-date-label">Created</label>
+    <input type="date" id="date-from" class="recycled-date-input" onchange="applyFilters()" title="From date">
+    <span class="recycled-date-sep">→</span>
+    <input type="date" id="date-to"   class="recycled-date-input" onchange="applyFilters()" title="To date">
+    <button class="recycled-date-clear" onclick="clearDates()" title="Clear dates">✕</button>
+  </div>
 
   <div class="recycled-search-box">
     <input type="text" id="recycled-search" placeholder="&#128269; Search name, company, phone..."
-           oninput="filterRecycled(this.value)">
+           oninput="applyFilters()">
   </div>
+
+  <span class="recycled-filter-count" id="filter-count">Showing {{ leads|length }} records</span>
 </div>
 
 <!-- Results Table -->
@@ -226,12 +235,33 @@ cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
   });
 });
 
-function filterRecycled(query) {
-  query = query.toLowerCase();
+function applyFilters() {
+  const query   = (document.getElementById('recycled-search').value || '').toLowerCase();
+  const fromVal = document.getElementById('date-from').value;  // YYYY-MM-DD or ''
+  const toVal   = document.getElementById('date-to').value;
+
+  let visible = 0;
   document.querySelectorAll('.recycled-row').forEach(row => {
-    const text = row.dataset.search || '';
-    row.style.display = text.includes(query) ? '' : 'none';
+    const text    = row.dataset.search  || '';
+    const created = row.dataset.created || '';
+
+    const matchSearch = !query   || text.includes(query);
+    const matchFrom   = !fromVal || created >= fromVal;
+    const matchTo     = !toVal   || created <= toVal;
+
+    const show = matchSearch && matchFrom && matchTo;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
+
+  const counter = document.getElementById('filter-count');
+  if (counter) counter.textContent = 'Showing ' + visible + ' records';
+}
+
+function clearDates() {
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value   = '';
+  applyFilters();
 }
 
 let currentSort = 'created';

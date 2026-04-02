@@ -784,7 +784,25 @@ body {
   padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--border);
   font-size: 13px; background: var(--card-bg); color: var(--text);
 }
-.recycled-filter-count { font-size: 13px; color: var(--text-light); font-weight: 600; }
+.recycled-filter-count { font-size: 13px; color: var(--text-light); font-weight: 600; white-space: nowrap; }
+
+.recycled-date-range {
+  display: flex; align-items: center; gap: 6px;
+}
+.recycled-date-label { font-size: 12px; font-weight: 600; color: var(--text-light); white-space: nowrap; }
+.recycled-date-input {
+  padding: 6px 8px; border-radius: var(--radius); border: 1px solid var(--border);
+  font-size: 12px; background: var(--card-bg); color: var(--text);
+  width: 130px; cursor: pointer;
+}
+.recycled-date-input:focus { outline: none; border-color: var(--navy-light); }
+.recycled-date-sep { font-size: 13px; color: var(--muted); }
+.recycled-date-clear {
+  padding: 5px 8px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--bg); color: var(--muted); cursor: pointer; font-size: 11px;
+  line-height: 1;
+}
+.recycled-date-clear:hover { background: var(--border); color: var(--text); }
 .recycled-search-box input {
   padding: 7px 12px; border-radius: var(--radius); border: 1px solid var(--border);
   font-size: 13px; width: 240px; background: var(--card-bg);
