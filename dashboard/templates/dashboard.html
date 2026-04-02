@@ -261,24 +261,36 @@
     </div>
     <form action="{{ url_for('add_callback') }}" method="post" class="modal-form">
 
+      <!-- SF Link paste-to-fill -->
+      <div class="sf-paste-row">
+        <label class="sf-paste-label">&#128279; Paste Salesforce Link</label>
+        <div class="sf-paste-input-wrap">
+          <input type="text" id="sf-paste-input"
+                 placeholder="Paste any SF Lead, Opportunity, or Contact URL here..."
+                 oninput="sfLookup(this.value)">
+          <span id="sf-paste-status" class="sf-paste-status"></span>
+        </div>
+        <div class="sf-paste-hint">Paste the URL from the Salesforce record — all fields fill automatically</div>
+      </div>
+
       <div class="form-row">
         <label>Business / Opp Name *</label>
-        <input type="text" name="name" required placeholder="e.g. Joe's BBQ Shack">
+        <input type="text" id="cb-name" name="name" required placeholder="e.g. Joe's BBQ Shack">
       </div>
 
       <div class="form-row">
         <label>Contact Name</label>
-        <input type="text" name="contact_name" placeholder="Owner / decision maker name">
+        <input type="text" id="cb-contact" name="contact_name" placeholder="Owner / decision maker name">
       </div>
 
       <div class="form-row">
         <label>Phone</label>
-        <input type="tel" name="phone" placeholder="555-867-5309">
+        <input type="tel" id="cb-phone" name="phone" placeholder="555-867-5309">
       </div>
 
       <div class="form-row">
-        <label>Salesforce Opportunity URL</label>
-        <input type="url" name="sf_url" placeholder="https://crmcredorax.lightning.force.com/lightning/r/Opportunity/...">
+        <label>Salesforce URL</label>
+        <input type="url" id="cb-sfurl" name="sf_url" placeholder="https://crmcredorax.lightning.force.com/lightning/r/...">
       </div>
 
       <div class="form-row">
@@ -535,9 +547,50 @@
 
 {% block scripts %}
 <script>
+// ── SF URL Lookup (paste-to-fill callback form) ──
+let sfLookupTimer = null;
+function sfLookup(val) {
+  clearTimeout(sfLookupTimer);
+  const status = document.getElementById('sf-paste-status');
+  if (!val.includes('/lightning/r/')) return (status.textContent = '');
+  status.className = 'sf-paste-status sf-paste-loading';
+  status.textContent = 'Looking up…';
+  sfLookupTimer = setTimeout(() => {
+    fetch('/api/sf_lookup?url=' + encodeURIComponent(val))
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          status.className = 'sf-paste-status sf-paste-error';
+          status.textContent = '✕ ' + data.error;
+          return;
+        }
+        if (data.name)         document.getElementById('cb-name').value    = data.name;
+        if (data.contact_name) document.getElementById('cb-contact').value  = data.contact_name;
+        if (data.phone)        document.getElementById('cb-phone').value    = data.phone;
+        if (data.sf_url)       document.getElementById('cb-sfurl').value    = data.sf_url;
+        if (data.warning) {
+          status.className = 'sf-paste-status sf-paste-warn';
+          status.textContent = '⚠ ' + data.warning;
+        } else {
+          status.className = 'sf-paste-status sf-paste-ok';
+          status.textContent = '✓ ' + data.record_type + ' loaded';
+        }
+      })
+      .catch(() => {
+        status.className = 'sf-paste-status sf-paste-error';
+        status.textContent = '✕ Lookup failed';
+      });
+  }, 400);
+}
+
 // ── Modal helpers ──
 function openModal(id) {
   document.getElementById(id).style.display = 'flex';
+  // Clear paste field when modal opens
+  if (id === 'add-callback-modal') {
+    const el = document.getElementById('sf-paste-input');
+    if (el) { el.value = ''; document.getElementById('sf-paste-status').textContent = ''; }
+  }
 }
 function closeModal(id) {
   document.getElementById(id).style.display = 'none';

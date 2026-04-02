@@ -395,6 +395,27 @@ body {
 }
 .modal-close:hover { color: var(--text); }
 .modal-form { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+/* SF paste-to-fill row */
+.sf-paste-row {
+  background: #f0f7ff; border: 1px solid #bfdbfe;
+  border-radius: var(--radius); padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.sf-paste-label { font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: .4px; }
+.sf-paste-input-wrap { display: flex; align-items: center; gap: 8px; }
+.sf-paste-input-wrap input {
+  flex: 1; padding: 7px 10px; border: 1px solid #93c5fd;
+  border-radius: var(--radius); font-size: 12px;
+  background: #fff; color: var(--text);
+}
+.sf-paste-input-wrap input:focus { outline: none; border-color: #3b82f6; }
+.sf-paste-hint { font-size: 11px; color: #3b82f6; }
+.sf-paste-status { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.sf-paste-loading { color: #6b7280; }
+.sf-paste-ok      { color: #059669; }
+.sf-paste-warn    { color: #d97706; }
+.sf-paste-error   { color: #dc2626; }
 .modal-name {
   font-weight: 600;
   font-size: 14px;

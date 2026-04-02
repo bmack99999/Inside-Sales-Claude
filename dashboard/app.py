@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import subprocess
 import uuid
 from datetime import date, datetime
 
@@ -611,6 +613,125 @@ def api_ingest():
                         'scheduled': len(t.get('scheduled', []))})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
+
+
+@app.route('/api/sf_lookup')
+def sf_lookup():
+    """Parse a Salesforce URL and return record details via SF CLI."""
+    url = request.args.get('url', '').strip()
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+
+    # Extract record type + ID from Lightning URL
+    # e.g. /lightning/r/Lead/00Q.../view  or  /lightning/r/Opportunity/006.../view
+    m = re.search(r'/lightning/r/(\w+)/([A-Za-z0-9]{15,18})(?:/view)?', url)
+    if not m:
+        return jsonify({'error': 'Could not parse Salesforce URL — paste the full record URL'}), 400
+
+    record_type = m.group(1)   # Lead | Opportunity | Contact | Account
+    record_id   = m.group(2)
+
+    SF_ALIAS = 'shift4'
+
+    def run_soql(query):
+        result = subprocess.run(
+            ['sf', 'data', 'query', '--query', query,
+             '--target-org', SF_ALIAS, '--json'],
+            capture_output=True, text=True, timeout=20
+        )
+        data = json.loads(result.stdout)
+        if data.get('status') != 0:
+            raise RuntimeError(data.get('message', 'SOQL error'))
+        return data['result']['records']
+
+    try:
+        if record_type == 'Lead':
+            rows = run_soql(
+                f"SELECT Name, Company, Phone, Email FROM Lead WHERE Id = '{record_id}'"
+            )
+            if not rows:
+                return jsonify({'error': 'Lead not found'}), 404
+            r = rows[0]
+            return jsonify({
+                'name':         r.get('Company') or r.get('Name'),
+                'contact_name': r.get('Name'),
+                'phone':        r.get('Phone') or '',
+                'sf_url':       url,
+                'record_type':  'Lead',
+            })
+
+        elif record_type == 'Opportunity':
+            rows = run_soql(
+                f"SELECT Name, Account.Name, ContactId FROM Opportunity WHERE Id = '{record_id}'"
+            )
+            if not rows:
+                return jsonify({'error': 'Opportunity not found'}), 404
+            r = rows[0]
+            account = r.get('Account') or {}
+            biz_name = (account.get('Name') if isinstance(account, dict) else None) or r.get('Name')
+
+            contact_name = ''
+            phone = ''
+            if r.get('ContactId'):
+                contacts = run_soql(
+                    f"SELECT Name, Phone, MobilePhone FROM Contact WHERE Id = '{r['ContactId']}'"
+                )
+                if contacts:
+                    c = contacts[0]
+                    contact_name = c.get('Name') or ''
+                    phone = c.get('Phone') or c.get('MobilePhone') or ''
+
+            return jsonify({
+                'name':         biz_name,
+                'contact_name': contact_name,
+                'phone':        phone,
+                'sf_url':       url,
+                'record_type':  'Opportunity',
+            })
+
+        elif record_type == 'Contact':
+            rows = run_soql(
+                f"SELECT Name, Phone, MobilePhone, Account.Name FROM Contact WHERE Id = '{record_id}'"
+            )
+            if not rows:
+                return jsonify({'error': 'Contact not found'}), 404
+            r = rows[0]
+            account = r.get('Account') or {}
+            return jsonify({
+                'name':         (account.get('Name') if isinstance(account, dict) else None) or '',
+                'contact_name': r.get('Name') or '',
+                'phone':        r.get('Phone') or r.get('MobilePhone') or '',
+                'sf_url':       url,
+                'record_type':  'Contact',
+            })
+
+        elif record_type == 'Account':
+            rows = run_soql(
+                f"SELECT Name, Phone FROM Account WHERE Id = '{record_id}'"
+            )
+            if not rows:
+                return jsonify({'error': 'Account not found'}), 404
+            r = rows[0]
+            return jsonify({
+                'name':         r.get('Name') or '',
+                'contact_name': '',
+                'phone':        r.get('Phone') or '',
+                'sf_url':       url,
+                'record_type':  'Account',
+            })
+
+        else:
+            return jsonify({'error': f'Unsupported record type: {record_type}'}), 400
+
+    except FileNotFoundError:
+        # SF CLI not available (Railway) — return URL only
+        return jsonify({
+            'name': '', 'contact_name': '', 'phone': '',
+            'sf_url': url, 'record_type': record_type,
+            'warning': 'SF CLI not available — fields filled from URL only',
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/lead_color', methods=['POST'])
