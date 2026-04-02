@@ -1,0 +1,5 @@
+[phases.install]
+cmds = ["pip install -r dashboard/requirements.txt"]
+
+[start]
+cmd = "gunicorn -w 1 --chdir dashboard app:app"
