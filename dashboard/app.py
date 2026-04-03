@@ -5,6 +5,42 @@ import subprocess
 import uuid
 from datetime import date, datetime
 
+import phonenumbers
+from phonenumbers import timezone as _phone_tz
+
+_TZ_LABELS = {
+    'America/New_York':'ET','America/Detroit':'ET','America/Kentucky/Louisville':'ET',
+    'America/Kentucky/Monticello':'ET','America/Indiana/Indianapolis':'ET',
+    'America/Indiana/Vevay':'ET','America/Indiana/Marengo':'ET',
+    'America/Indiana/Vincennes':'ET','America/Indiana/Winamac':'ET',
+    'America/Chicago':'CT','America/Indiana/Knox':'CT','America/Indiana/Tell_City':'CT',
+    'America/Menominee':'CT','America/North_Dakota/Center':'CT',
+    'America/North_Dakota/New_Salem':'CT','America/North_Dakota/Beulah':'CT',
+    'America/Denver':'MT','America/Boise':'MT','America/Phoenix':'MT',
+    'America/Los_Angeles':'PT','America/Anchorage':'AK','America/Juneau':'AK',
+    'America/Sitka':'AK','America/Yakutat':'AK','America/Nome':'AK',
+    'Pacific/Honolulu':'HI','America/Adak':'HI',
+    'America/Puerto_Rico':'ET','America/Toronto':'ET','America/Vancouver':'PT',
+    'America/Winnipeg':'CT','America/Edmonton':'MT','America/Calgary':'MT',
+}
+
+def get_phone_tz(phone):
+    if not phone:
+        return None
+    try:
+        parsed = phonenumbers.parse(phone, 'US')
+        if phonenumbers.is_valid_number(parsed):
+            tzs = _phone_tz.time_zones_for_number(parsed)
+            if tzs:
+                for tz in tzs:
+                    lbl = _TZ_LABELS.get(tz)
+                    if lbl:
+                        return lbl
+                return tzs[0].split('/')[-1].replace('_', ' ')
+    except Exception:
+        pass
+    return None
+
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from dateutil import parser as dateutil_parser
 
@@ -239,6 +275,67 @@ def pipeline():
         if not matched:
             grouped['Other'].append(r)
     return render_template('pipeline.html', grouped=grouped, stages=stages)
+
+
+# ── My Leads & Opps ──────────────────────────────────────────────────────────
+
+@app.route('/my_leads')
+def my_leads():
+    tab        = request.args.get('tab', 'leads')
+    phone_only = request.args.get('phone_only', '0') == '1'
+    source_filter = request.args.get('source', '')
+    stage_filter  = request.args.get('stage', '')
+
+    color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
+
+    # ── Leads ──
+    lead_q = Lead.query
+    if phone_only:
+        lead_q = lead_q.filter(Lead.phone != None, Lead.phone != '')
+    if source_filter:
+        lead_q = lead_q.filter(Lead.lead_source == source_filter)
+    leads_raw = lead_q.order_by(Lead.last_activity_date.asc().nullsfirst()).all()
+
+    leads = []
+    for l in leads_raw:
+        d = l.to_dict()
+        d['color']    = color_map.get(l.id)
+        d['timezone'] = get_phone_tz(l.phone)
+        d['sf_url']   = f"{SF_BASE}/lightning/r/Lead/{l.id}/view"
+        leads.append(d)
+
+    lead_sources = sorted(set(l.lead_source for l in Lead.query.all() if l.lead_source))
+
+    # ── Opps ──
+    opp_q = Opportunity.query
+    if phone_only:
+        opp_q = opp_q.filter(Opportunity.phone != None, Opportunity.phone != '')
+    if stage_filter:
+        opp_q = opp_q.filter(Opportunity.stage == stage_filter)
+    opps_raw = opp_q.order_by(Opportunity.last_activity_date.asc().nullsfirst()).all()
+
+    opps = []
+    for o in opps_raw:
+        d = o.to_dict()
+        d['color']    = color_map.get(o.id)
+        d['timezone'] = get_phone_tz(o.phone)
+        d['sf_url']   = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
+        opps.append(d)
+
+    opp_stages = sorted(set(o.stage for o in Opportunity.query.all() if o.stage))
+
+    log = RefreshLog.query.filter_by(
+        refresh_type='salesforce').order_by(RefreshLog.id.desc()).first()
+    refresh_info = log.to_dict() if log else {}
+
+    return render_template('my_leads.html',
+        leads=leads, opps=opps,
+        tab=tab, phone_only=phone_only,
+        source_filter=source_filter, stage_filter=stage_filter,
+        lead_sources=lead_sources, opp_stages=opp_stages,
+        refresh_info=refresh_info,
+        sf_base=SF_BASE,
+    )
 
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────

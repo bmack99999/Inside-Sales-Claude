@@ -22,6 +22,9 @@
       <a href="{{ url_for('kpis') }}" class="nav-link {% if request.endpoint == 'kpis' %}active{% endif %}">
         KPIs
       </a>
+      <a href="{{ url_for('my_leads') }}" class="nav-link {% if request.endpoint == 'my_leads' %}active{% endif %}">
+        My Leads
+      </a>
       <a href="{{ url_for('recycled') }}" class="nav-link {% if request.endpoint == 'recycled' %}active{% endif %}">
         Recycled
       </a>

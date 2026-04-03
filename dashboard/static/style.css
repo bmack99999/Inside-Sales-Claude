@@ -1026,3 +1026,68 @@ body {
 
 .recycled-row.row-color-purple      { background: rgba(142,36,170,.08) !important; }
 .recycled-row.row-color-purple td:first-child { border-left: 4px solid #8E24AA; }
+
+/* ── My Leads & Opps page ─────────────────────────────────────────────────── */
+
+/* Tab toggle */
+.ml-tabs {
+  display: flex; gap: 4px; margin-bottom: 12px;
+}
+.ml-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  color: var(--text-light); background: var(--card-bg);
+  border: 1px solid var(--border); text-decoration: none;
+  transition: background .15s, color .15s;
+}
+.ml-tab:hover { background: #e8ecf2; color: var(--text); }
+.ml-tab-active {
+  background: var(--navy); color: #fff !important;
+  border-color: var(--navy);
+}
+.ml-tab-icon { font-size: 14px; }
+.ml-tab-count {
+  background: rgba(255,255,255,.25); color: inherit;
+  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700;
+}
+.ml-tab-active .ml-tab-count { background: rgba(255,255,255,.3); }
+
+/* Status badges */
+.ml-status {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+}
+.ml-status-open,
+.ml-status-new                { background: #e8f0fe; color: #1a56c4; }
+.ml-status-working,
+.ml-status-attempted_to_reach { background: #fff3e0; color: #e65100; }
+.ml-status-qualified          { background: #e8f5e9; color: #2e7d32; }
+.ml-status-unqualified        { background: #fce4ec; color: #c62828; }
+.ml-status-converted          { background: #f3e5f5; color: #6a1b9a; }
+.ml-status-other,
+.ml-status-                   { background: #f4f5f5; color: #7f8c8d; }
+
+/* Next task cell */
+.ml-next-task { max-width: 180px; }
+.ml-task-label { display: block; font-size: 12px; color: var(--text); }
+.ml-task-due {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  color: var(--muted, #7f8c8d); margin-top: 2px;
+}
+
+/* Stale days-in-stage highlight */
+.ml-stale { color: #c0392b; font-weight: 700; }
+
+/* ml-row color highlights (same colors as recycled-row but for .ml-row class) */
+.ml-row.row-color-yellow      { background: rgba(245,197,24,.10) !important; }
+.ml-row.row-color-yellow      td:first-child { border-left: 4px solid #F5C518; }
+.ml-row.row-color-red         { background: rgba(229,57,53,.08) !important; }
+.ml-row.row-color-red         td:first-child { border-left: 4px solid #E53935; }
+.ml-row.row-color-blue        { background: rgba(30,136,229,.08) !important; }
+.ml-row.row-color-blue        td:first-child { border-left: 4px solid #1E88E5; }
+.ml-row.row-color-light_green { background: rgba(102,187,106,.10) !important; }
+.ml-row.row-color-light_green td:first-child { border-left: 4px solid #66BB6A; }
+.ml-row.row-color-dark_green  { background: rgba(46,125,50,.10) !important; }
+.ml-row.row-color-dark_green  td:first-child { border-left: 4px solid #2E7D32; }
+.ml-row.row-color-purple      { background: rgba(142,36,170,.08) !important; }
+.ml-row.row-color-purple      td:first-child { border-left: 4px solid #8E24AA; }

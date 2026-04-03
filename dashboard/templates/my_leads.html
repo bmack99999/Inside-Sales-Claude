@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}My Leads & Opps — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">My Leads &amp; Opps</h1>
+    <div class="header-meta">
+      {% if refresh_info.refreshed_at %}
+        Last sync: {{ refresh_info.refreshed_at }}
+        &nbsp;·&nbsp; {{ refresh_info.lead_count or 0 }} leads &nbsp;·&nbsp; {{ refresh_info.opp_count or 0 }} opps
+      {% else %}No sync yet{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Tab toggle -->
+<div class="ml-tabs">
+  <a href="{{ url_for('my_leads', tab='leads', phone_only=phone_only|int, source=source_filter) }}"
+     class="ml-tab {% if tab == 'leads' %}ml-tab-active{% endif %}">
+    <span class="ml-tab-icon">👤</span> Leads
+    <span class="ml-tab-count">{{ leads|length }}</span>
+  </a>
+  <a href="{{ url_for('my_leads', tab='opps', phone_only=phone_only|int, stage=stage_filter) }}"
+     class="ml-tab {% if tab == 'opps' %}ml-tab-active{% endif %}">
+    <span class="ml-tab-icon">💼</span> Opportunities
+    <span class="ml-tab-count">{{ opps|length }}</span>
+  </a>
+</div>
+
+<!-- Filters -->
+<div class="recycled-filters">
+  <form method="get" action="{{ url_for('my_leads') }}" class="recycled-filter-form">
+    <input type="hidden" name="tab" value="{{ tab }}">
+
+    <label class="recycled-filter-check">
+      <input type="checkbox" name="phone_only" value="1" {{ 'checked' if phone_only }}
+             onchange="this.form.submit()">
+      Phone # only
+    </label>
+
+    {% if tab == 'leads' %}
+    <select name="source" onchange="this.form.submit()">
+      <option value="">All Sources</option>
+      {% for s in lead_sources %}
+      <option value="{{ s }}" {{ 'selected' if s == source_filter }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <select name="stage" onchange="this.form.submit()">
+      <option value="">All Stages</option>
+      {% for s in opp_stages %}
+      <option value="{{ s }}" {{ 'selected' if s == stage_filter }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
+  </form>
+
+  <div class="recycled-date-range">
+    <label class="recycled-date-label">Last Activity</label>
+    <input type="date" id="date-from" class="recycled-date-input" onchange="applyFilters()" title="From">
+    <span class="recycled-date-sep">→</span>
+    <input type="date" id="date-to"   class="recycled-date-input" onchange="applyFilters()" title="To">
+    <button class="recycled-date-clear" onclick="clearDates()" title="Clear">✕</button>
+  </div>
+
+  <div class="recycled-search-box">
+    <input type="text" id="ml-search"
+           placeholder="🔍 Search name, company, phone..."
+           oninput="applyFilters()">
+  </div>
+
+  <span class="recycled-filter-count" id="filter-count">
+    Showing {{ (leads if tab == 'leads' else opps)|length }} records
+  </span>
+</div>
+
+<!-- ── LEADS TABLE ─────────────────────────────────────────────────────────── -->
+{% if tab == 'leads' %}
+{% if leads %}
+<div class="recycled-table-wrap">
+  <table class="recycled-table ml-table">
+    <thead>
+      <tr>
+        <th class="color-th"></th>
+        <th>Name</th>
+        <th>Company</th>
+        <th>Phone</th>
+        <th>TZ</th>
+        <th>Source</th>
+        <th>Status</th>
+        <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="activity"  onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th class="sortable" data-col="attempts"  onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
+        <th>Next Task</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in leads %}
+      <tr class="recycled-row ml-row {% if l.color %}row-color-{{ l.color }}{% endif %}"
+          data-search="{{ (l.name or '')|lower }} {{ (l.company or '')|lower }} {{ (l.phone or '')|lower }}"
+          data-activity="{{ l.last_activity_date or '' }}"
+          data-age="{{ l.lead_age_days or 0 }}"
+          data-attempts="{{ l.call_attempts or 0 }}">
+        <td class="color-cell">
+          <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
+               data-sf-id="{{ l.id }}"
+               onclick="openColorPicker(this)" title="Set color"></div>
+        </td>
+        <td class="recycled-name">
+          <a href="{{ l.sf_url }}" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
+        </td>
+        <td>{{ l.company or '—' }}</td>
+        <td>
+          {% if l.phone %}<a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
+        <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
+        <td><span class="ml-status ml-status-{{ (l.status or 'other')|lower|replace(' ','_') }}">{{ l.status or '—' }}</span></td>
+        <td>{{ l.lead_age_days or 0 }}d</td>
+        <td>{{ l.last_activity_date or 'Never' }}</td>
+        <td>{{ l.call_attempts or 0 }}</td>
+        <td class="ml-next-task">
+          {% if l.next_task %}
+            <span class="ml-task-label">{{ l.next_task[:35] }}</span>
+            {% if l.next_task_due %}<span class="ml-task-due">{{ l.next_task_due }}</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="recycled-notes-cell">
+          {% if l.activity_summary %}
+            <span class="recycled-notes" title="{{ l.activity_summary }}">{{ l.activity_summary[:70] }}{% if l.activity_summary|length > 70 %}…{% endif %}</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><div class="empty-icon">📋</div>
+  <h2>No leads loaded</h2><p>Run <strong>Refresh SF Data</strong> to pull your active leads.</p>
+</div>
+{% endif %}
+
+<!-- ── OPPS TABLE ──────────────────────────────────────────────────────────── -->
+{% else %}
+{% if opps %}
+<div class="recycled-table-wrap">
+  <table class="recycled-table ml-table">
+    <thead>
+      <tr>
+        <th class="color-th"></th>
+        <th>Opportunity</th>
+        <th>Account</th>
+        <th>Contact</th>
+        <th>Phone</th>
+        <th>TZ</th>
+        <th>Stage</th>
+        <th class="sortable" data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
+        <th class="sortable" data-col="days"     onclick="sortTable('days')">Days in Stage <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th>Next Step</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in opps %}
+      <tr class="recycled-row ml-row {% if o.color %}row-color-{{ o.color }}{% endif %}"
+          data-search="{{ (o.name or '')|lower }} {{ (o.account_name or '')|lower }} {{ (o.contact_name or '')|lower }} {{ (o.phone or '')|lower }}"
+          data-activity="{{ o.last_activity_date or '' }}"
+          data-close="{{ o.close_date or '' }}"
+          data-days="{{ o.days_in_stage or 0 }}"
+          data-attempts="0">
+        <td class="color-cell">
+          <div class="color-trigger {% if o.color %}cp-{{ o.color }}{% endif %}"
+               data-sf-id="{{ o.id }}"
+               onclick="openColorPicker(this)" title="Set color"></div>
+        </td>
+        <td class="recycled-name">
+          <a href="{{ o.sf_url }}" target="_blank" class="recycled-name-link">{{ o.name or '—' }}</a>
+        </td>
+        <td>{{ o.account_name or '—' }}</td>
+        <td>{{ o.contact_name or '—' }}</td>
+        <td>
+          {% if o.phone %}<a href="tel:{{ o.phone }}" class="card-phone">{{ o.phone }}</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>{% if o.timezone %}<span class="tz-badge tz-{{ o.timezone }}">{{ o.timezone }}</span>{% else %}—{% endif %}</td>
+        <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
+        <td>{{ o.close_date or '—' }}</td>
+        <td class="{% if o.days_in_stage and o.days_in_stage > 14 %}ml-stale{% endif %}">{{ o.days_in_stage or 0 }}d</td>
+        <td>{{ o.last_activity_date or 'Never' }}</td>
+        <td class="ml-next-task">
+          {% if o.next_step %}
+            <span class="ml-task-label">{{ o.next_step[:35] }}</span>
+            {% if o.next_task_due %}<span class="ml-task-due">{{ o.next_task_due }}</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="recycled-notes-cell">
+          {% if o.activity_summary %}
+            <span class="recycled-notes" title="{{ o.activity_summary }}">{{ o.activity_summary[:70] }}{% if o.activity_summary|length > 70 %}…{% endif %}</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><div class="empty-icon">💼</div>
+  <h2>No opportunities loaded</h2><p>Run <strong>Refresh SF Data</strong> to pull your open opportunities.</p>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- Shared color picker popup -->
+<div id="colorPickerPopup" style="display:none;">
+  <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
+  <div class="cp-swatch cp-red"         data-color="red"         title="Red"></div>
+  <div class="cp-swatch cp-blue"        data-color="blue"        title="Blue"></div>
+  <div class="cp-swatch cp-light_green" data-color="light_green" title="Light Green"></div>
+  <div class="cp-swatch cp-dark_green"  data-color="dark_green"  title="Dark Green"></div>
+  <div class="cp-swatch cp-purple"      data-color="purple"      title="Purple"></div>
+  <div class="cp-swatch cp-clear"       data-color=""            title="Clear">✕</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Color picker ──────────────────────────────────────────────────────────────
+const cpPopup = document.getElementById('colorPickerPopup');
+let activeTrigger = null;
+document.body.appendChild(cpPopup);
+
+function openColorPicker(trigger) {
+  if (activeTrigger === trigger && cpPopup.style.display !== 'none') {
+    closeColorPicker(); return;
+  }
+  activeTrigger = trigger;
+  const rect = trigger.getBoundingClientRect();
+  cpPopup.style.display = 'flex';
+  const popW = cpPopup.offsetWidth || 116;
+  let left = rect.left + rect.width / 2 - popW / 2;
+  let top  = rect.bottom + 6;
+  left = Math.max(4, Math.min(left, window.innerWidth - popW - 4));
+  cpPopup.style.left = left + 'px';
+  cpPopup.style.top  = top  + 'px';
+}
+function closeColorPicker() { cpPopup.style.display = 'none'; activeTrigger = null; }
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#colorPickerPopup') && !e.target.classList.contains('color-trigger'))
+    closeColorPicker();
+});
+cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
+  swatch.addEventListener('click', function() {
+    if (!activeTrigger) return;
+    const color = this.dataset.color;
+    const sfId  = activeTrigger.dataset.sfId;
+    const row   = activeTrigger.closest('.ml-row');
+    activeTrigger.className = 'color-trigger' + (color ? ' cp-' + color : '');
+    row.className = row.className.replace(/\brow-color-\S+/g, '').trim();
+    if (color) row.classList.add('row-color-' + color);
+    closeColorPicker();
+    fetch('/api/lead_color', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sf_id: sfId, color: color})
+    });
+  });
+});
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const query   = (document.getElementById('ml-search').value || '').toLowerCase();
+  const fromVal = document.getElementById('date-from').value;
+  const toVal   = document.getElementById('date-to').value;
+  let visible = 0;
+  document.querySelectorAll('.ml-row').forEach(row => {
+    const text     = row.dataset.search   || '';
+    const activity = row.dataset.activity || '';
+    const show = (!query   || text.includes(query))
+              && (!fromVal || activity >= fromVal)
+              && (!toVal   || activity <= toVal);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const counter = document.getElementById('filter-count');
+  if (counter) counter.textContent = 'Showing ' + visible + ' records';
+}
+function clearDates() {
+  document.getElementById('date-from').value = '';
+  document.getElementById('date-to').value   = '';
+  applyFilters();
+}
+
+// ── Sort ──────────────────────────────────────────────────────────────────────
+let currentSort = '{{ "age" if tab == "leads" else "days" }}';
+let sortAsc = false;
+
+function sortTable(col) {
+  const tbody = document.querySelector('.ml-table tbody');
+  if (!tbody) return;
+  sortAsc = (currentSort === col) ? !sortAsc : false;
+  currentSort = col;
+  document.querySelectorAll('.sortable .sort-arrow').forEach(el => el.textContent = '');
+  const hdr = document.querySelector('[data-col="' + col + '"] .sort-arrow');
+  if (hdr) hdr.textContent = sortAsc ? '▴' : '▾';
+  const rows = Array.from(tbody.querySelectorAll('.ml-row'));
+  rows.sort((a, b) => {
+    let va = a.dataset[col] || '';
+    let vb = b.dataset[col] || '';
+    if (['age','attempts','days'].includes(col)) { va = parseInt(va)||0; vb = parseInt(vb)||0; }
+    if (va === '' && vb === '') return 0;
+    if (va === '') return 1;
+    if (vb === '') return -1;
+    let cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return sortAsc ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+// Default sort on load
+sortTable(currentSort);
+</script>
+{% endblock %}
