@@ -73,7 +73,7 @@ def extract_leads():
         "LastActivityDate, City, State, HasOptedOutOfEmail "
         f"FROM Lead WHERE OwnerId = '{USER_ID}' "
         "AND IsConverted = false "
-        "AND (Status = 'Qualified' OR Status = 'Working')"
+        "AND (Status = 'New' OR Status = 'Qualified' OR Status = 'Working')"
     )
     print(f"  Found {len(leads_raw)} open leads")
 
