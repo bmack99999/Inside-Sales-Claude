@@ -235,7 +235,9 @@ cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({sf_id: sfId, color: color})
-    });
+    }).then(r => {
+      if (!r.ok) console.error('Color save failed:', r.status, sfId, color);
+    }).catch(e => console.error('Color save error:', e, sfId, color));
   });
 });
 
