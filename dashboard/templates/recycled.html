@@ -241,9 +241,33 @@ cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
   });
 });
 
+// ── State persistence ─────────────────────────────────────────────────────────
+// Key includes category + converted so each tab combo saves independently
+const STATE_KEY = 'recycled_v1_{{ category }}_{{ converted }}';
+
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      search:   document.getElementById('recycled-search').value,
+      dateFrom: document.getElementById('date-from').value,
+      dateTo:   document.getElementById('date-to').value,
+      sortCol:  currentSort,
+      sortAsc:  sortAsc,
+      scrollY:  window.scrollY
+    }));
+  } catch(e) {}
+}
+
+// Debounced scroll save so we don't hammer localStorage on every pixel
+let _scrollTimer;
+window.addEventListener('scroll', function() {
+  clearTimeout(_scrollTimer);
+  _scrollTimer = setTimeout(saveState, 150);
+});
+
 function applyFilters() {
   const query   = (document.getElementById('recycled-search').value || '').toLowerCase();
-  const fromVal = document.getElementById('date-from').value;  // YYYY-MM-DD or ''
+  const fromVal = document.getElementById('date-from').value;
   const toVal   = document.getElementById('date-to').value;
 
   let visible = 0;
@@ -262,6 +286,7 @@ function applyFilters() {
 
   const counter = document.getElementById('filter-count');
   if (counter) counter.textContent = 'Showing ' + visible + ' records';
+  saveState();
 }
 
 function clearDates() {
@@ -271,20 +296,22 @@ function clearDates() {
 }
 
 let currentSort = 'created';
-let sortAsc = false; // default descending (newest first)
+let sortAsc = false; // default: newest first
 
-function sortTable(col) {
+function sortTable(col, skipToggle) {
   const tbody = document.querySelector('.recycled-table tbody');
   if (!tbody) return;
 
-  if (currentSort === col) {
-    sortAsc = !sortAsc;
-  } else {
-    currentSort = col;
-    sortAsc = col === 'attempts' ? false : false; // default desc for all
+  if (!skipToggle) {
+    if (currentSort === col) {
+      sortAsc = !sortAsc;
+    } else {
+      currentSort = col;
+      sortAsc = false; // default desc on new column
+    }
   }
 
-  // Update arrows
+  // Update arrow indicators
   document.querySelectorAll('.sortable .sort-arrow').forEach(el => el.textContent = '');
   const activeHeader = document.querySelector('[data-col="' + col + '"] .sort-arrow');
   if (activeHeader) activeHeader.textContent = sortAsc ? '\u25B4' : '\u25BE';
@@ -309,6 +336,30 @@ function sortTable(col) {
   });
 
   rows.forEach(row => tbody.appendChild(row));
+  saveState();
 }
+
+// ── Restore saved state on page load ─────────────────────────────────────────
+(function restoreState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) {
+      // No saved state — apply default sort (created desc)
+      sortTable('created', true);
+      return;
+    }
+    const s = JSON.parse(raw);
+    document.getElementById('recycled-search').value = s.search   || '';
+    document.getElementById('date-from').value        = s.dateFrom || '';
+    document.getElementById('date-to').value          = s.dateTo   || '';
+    currentSort = s.sortCol || 'created';
+    sortAsc     = !!s.sortAsc;
+    applyFilters();           // filter first so hidden rows don't affect scroll
+    sortTable(currentSort, true); // restore sort without toggling direction
+    if (s.scrollY) setTimeout(() => window.scrollTo(0, s.scrollY), 80);
+  } catch(e) {
+    sortTable('created', true);
+  }
+})();
 </script>
 {% endblock %}
