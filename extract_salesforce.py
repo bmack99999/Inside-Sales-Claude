@@ -338,7 +338,7 @@ def extract_boss_metrics():
     closed_won_raw = run_soql(
         f"SELECT Id, CloseDate, Name "
         f"FROM Opportunity WHERE OwnerId = '{USER_ID}' "
-        f"AND StageName = 'Closed Won' "
+        f"AND (StageName = 'Closed Won' OR StageName = 'Underwriting') "
         f"AND CloseDate >= {START_DATE}"
     )
 
