@@ -261,21 +261,6 @@ def dashboard():
     )
 
 
-# ── Pipeline ──────────────────────────────────────────────────────────────────
-
-@app.route('/pipeline')
-def pipeline():
-    opps = [enrich_record(o.to_dict()) for o in Opportunity.query.all()]
-    stages = ['Demo Scheduled', 'Proposal Sent', 'Application', 'Closed Won', 'Other']
-    grouped = {s: [] for s in stages}
-    for r in opps:
-        stage = r.get('stage', '')
-        matched = any(s.lower() in stage.lower() and not grouped[s].append(r)
-                      for s in stages[:-1])
-        if not matched:
-            grouped['Other'].append(r)
-    return render_template('pipeline.html', grouped=grouped, stages=stages)
-
 
 # ── My Leads & Opps ──────────────────────────────────────────────────────────
 

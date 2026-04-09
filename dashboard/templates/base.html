@@ -16,9 +16,6 @@
       <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
         Daily Plan
       </a>
-      <a href="{{ url_for('pipeline') }}" class="nav-link {% if request.endpoint == 'pipeline' %}active{% endif %}">
-        Pipeline
-      </a>
       <a href="{{ url_for('kpis') }}" class="nav-link {% if request.endpoint == 'kpis' %}active{% endif %}">
         KPIs
       </a>
