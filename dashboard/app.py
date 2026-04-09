@@ -55,20 +55,25 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
-    # Migration: add color column to recycled_leads if it doesn't exist yet
-    from sqlalchemy import text as sa_text
-    with db.engine.connect() as _conn:
-        for tbl, col_def in [
-            ("recycled_leads", "color TEXT"),
-            ("recycled_leads", "timezone TEXT"),
-            ("sf_task_data",   "weekly_count INTEGER DEFAULT 0"),
-            ("sf_task_data",   "week_start TEXT"),
-        ]:
-            try:
-                _conn.execute(sa_text(f"ALTER TABLE {tbl} ADD COLUMN {col_def}"))
-                _conn.commit()
-            except Exception:
-                pass  # column already exists
+    # Migration: safely add new columns without relying on exception swallowing
+    from sqlalchemy import text as sa_text, inspect as sa_inspect
+    _inspector = sa_inspect(db.engine)
+    def _col_exists(table, col):
+        try:
+            return col in [c['name'] for c in _inspector.get_columns(table)]
+        except Exception:
+            return False
+    _migrations = [
+        ("recycled_leads", "color",        "TEXT"),
+        ("recycled_leads", "timezone",     "TEXT"),
+        ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
+        ("sf_task_data",   "week_start",   "TEXT"),
+    ]
+    for tbl, col, col_type in _migrations:
+        if not _col_exists(tbl, col):
+            with db.engine.connect() as _c:
+                _c.execute(sa_text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}"))
+                _c.commit()
 
 SF_BASE = "https://crmcredorax.lightning.force.com"
 
@@ -352,8 +357,12 @@ def api_metrics():
 
 @app.route('/api/tasks')
 def api_tasks():
-    row = SFTaskData.query.order_by(SFTaskData.id.desc()).first()
-    return jsonify(row.to_dict() if row else {})
+    try:
+        row = SFTaskData.query.order_by(SFTaskData.id.desc()).first()
+        return jsonify(row.to_dict() if row else {})
+    except Exception as e:
+        return jsonify({'error': str(e), 'completed': [], 'scheduled': [],
+                        'weekly_count': 0})
 
 
 @app.route('/api/records')
