@@ -642,6 +642,8 @@ def recycled():
         refresh_type='recycled').order_by(RefreshLog.id.desc()).first()
     refresh_info = log.to_dict() if log else {}
 
+    email_queue = {q.sf_id: q.slot for q in LeadEmailQueue.query.all()}
+
     return render_template('recycled.html',
         leads=leads,
         counts=counts,
@@ -652,6 +654,7 @@ def recycled():
         phone_only=phone_only,
         sources=sources,
         refresh_info=refresh_info,
+        email_queue=email_queue,
         sf_base=SF_BASE,
     )
 
