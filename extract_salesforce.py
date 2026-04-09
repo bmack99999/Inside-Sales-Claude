@@ -420,11 +420,19 @@ def extract_tasks():
         f"LIMIT 200"
     )
 
-    # Weekly completed count — Monday of current week through today
+    # Notes created today (ContentNote on any lead or opp)
+    notes_today_raw = run_soql(
+        f"SELECT Id FROM ContentNote "
+        f"WHERE CreatedById = '{USER_ID}' "
+        f"AND CreatedDate = TODAY "
+        f"LIMIT 2000"
+    )
+
+    # Weekly completed count — Monday of current week through today (tasks + notes)
     from datetime import timedelta
     today = date.today()
     monday = today - timedelta(days=today.weekday())  # weekday(): Mon=0 … Sun=6
-    weekly_raw = run_soql(
+    weekly_tasks_raw = run_soql(
         f"SELECT Id "
         f"FROM Task "
         f"WHERE OwnerId = '{USER_ID}' "
@@ -433,7 +441,13 @@ def extract_tasks():
         f"AND ActivityDate <= TODAY "
         f"LIMIT 2000"
     )
-    weekly_count = len(weekly_raw)
+    weekly_notes_raw = run_soql(
+        f"SELECT Id FROM ContentNote "
+        f"WHERE CreatedById = '{USER_ID}' "
+        f"AND CreatedDate = THIS_WEEK "
+        f"LIMIT 2000"
+    )
+    weekly_count = len(weekly_tasks_raw) + len(weekly_notes_raw)
 
     # Open/scheduled tasks from today onward
     scheduled_raw = run_soql(
@@ -462,11 +476,12 @@ def extract_tasks():
             'what_name':    what.get('Name', '') if isinstance(what, dict) else '',
         }
 
-    completed = [fmt(t) for t in completed_raw]
-    scheduled = [fmt(t) for t in scheduled_raw]
+    completed  = [fmt(t) for t in completed_raw]
+    scheduled  = [fmt(t) for t in scheduled_raw]
+    daily_count = len(completed) + len(notes_today_raw)
 
-    print(f"  Completed today:    {len(completed)}")
-    print(f"  Completed this week:{weekly_count}")
+    print(f"  Completed today:    {daily_count} ({len(completed)} tasks + {len(notes_today_raw)} notes)")
+    print(f"  Completed this week:{weekly_count} ({len(weekly_tasks_raw)} tasks + {len(weekly_notes_raw)} notes)")
     print(f"  Upcoming scheduled: {len(scheduled)}")
 
     return {
@@ -474,6 +489,7 @@ def extract_tasks():
         'date':          today_str,
         'completed':     completed,
         'scheduled':     scheduled,
+        'daily_count':   daily_count,
         'weekly_count':  weekly_count,
         'week_start':    monday.isoformat(),
     }

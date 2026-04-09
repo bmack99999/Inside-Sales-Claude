@@ -623,8 +623,8 @@
     .then(data => {
       if (!data) return;
 
-      // ── Daily gauge ──
-      const todayCount  = (data.completed || []).length;
+      // ── Daily gauge ── (tasks + notes)
+      const todayCount  = data.daily_count != null ? data.daily_count : (data.completed || []).length;
       const DAILY_MAX   = 120;
       renderGauge('gauge-arc', 'gauge-needle', 'gauge-count', 'gauge-label',
                   todayCount, 100, DAILY_MAX);

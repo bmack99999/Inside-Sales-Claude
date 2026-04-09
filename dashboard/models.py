@@ -205,7 +205,8 @@ class SFTaskData(db.Model):
     date         = db.Column(db.Text)
     completed    = db.Column(JsonList)   # tasks completed today
     scheduled    = db.Column(JsonList)   # open tasks due today or later
-    weekly_count = db.Column(db.Integer, default=0)  # tasks completed Mon–today
+    daily_count  = db.Column(db.Integer, default=0)  # tasks + notes completed today
+    weekly_count = db.Column(db.Integer, default=0)  # tasks + notes completed Mon–today
     week_start   = db.Column(db.Text)                # ISO date of Monday
 
     def to_dict(self):

@@ -68,6 +68,7 @@ with app.app_context():
         ("recycled_leads", "timezone",     "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
         ("sf_task_data",   "week_start",   "TEXT"),
+        ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
@@ -704,6 +705,7 @@ def api_ingest():
             date         = t.get('date'),
             completed    = t.get('completed', []),
             scheduled    = t.get('scheduled', []),
+            daily_count  = t.get('daily_count', len(t.get('completed', []))),
             weekly_count = t.get('weekly_count', 0),
             week_start   = t.get('week_start'),
         ))
