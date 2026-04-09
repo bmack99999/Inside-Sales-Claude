@@ -420,6 +420,20 @@ def extract_tasks():
         f"LIMIT 200"
     )
 
+    # Weekly completed count — Monday of current week through today
+    from datetime import timedelta
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())  # weekday(): Mon=0 … Sun=6
+    weekly_raw = run_soql(
+        f"SELECT COUNT() "
+        f"FROM Task "
+        f"WHERE OwnerId = '{USER_ID}' "
+        f"AND IsClosed = true "
+        f"AND ActivityDate >= {monday.isoformat()} "
+        f"AND ActivityDate <= TODAY"
+    )
+    weekly_count = weekly_raw[0].get('expr0', 0) if weekly_raw else 0
+
     # Open/scheduled tasks from today onward
     scheduled_raw = run_soql(
         f"SELECT Id, Subject, Description, ActivityDate, Status, Priority, "
@@ -451,13 +465,16 @@ def extract_tasks():
     scheduled = [fmt(t) for t in scheduled_raw]
 
     print(f"  Completed today:    {len(completed)}")
+    print(f"  Completed this week:{weekly_count}")
     print(f"  Upcoming scheduled: {len(scheduled)}")
 
     return {
-        'refreshed_at': datetime.now().strftime('%Y-%m-%d %I:%M %p'),
-        'date':         today_str,
-        'completed':    completed,
-        'scheduled':    scheduled,
+        'refreshed_at':  datetime.now().strftime('%Y-%m-%d %I:%M %p'),
+        'date':          today_str,
+        'completed':     completed,
+        'scheduled':     scheduled,
+        'weekly_count':  weekly_count,
+        'week_start':    monday.isoformat(),
     }
 
 

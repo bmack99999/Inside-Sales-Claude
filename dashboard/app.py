@@ -58,9 +58,14 @@ with app.app_context():
     # Migration: add color column to recycled_leads if it doesn't exist yet
     from sqlalchemy import text as sa_text
     with db.engine.connect() as _conn:
-        for col_def in ["color TEXT", "timezone TEXT"]:
+        for tbl, col_def in [
+            ("recycled_leads", "color TEXT"),
+            ("recycled_leads", "timezone TEXT"),
+            ("sf_task_data",   "weekly_count INTEGER DEFAULT 0"),
+            ("sf_task_data",   "week_start TEXT"),
+        ]:
             try:
-                _conn.execute(sa_text(f"ALTER TABLE recycled_leads ADD COLUMN {col_def}"))
+                _conn.execute(sa_text(f"ALTER TABLE {tbl} ADD COLUMN {col_def}"))
                 _conn.commit()
             except Exception:
                 pass  # column already exists
@@ -690,10 +695,13 @@ def api_ingest():
             date         = t.get('date'),
             completed    = t.get('completed', []),
             scheduled    = t.get('scheduled', []),
+            weekly_count = t.get('weekly_count', 0),
+            week_start   = t.get('week_start'),
         ))
         db.session.commit()
         return jsonify({'ok': True,
                         'completed': len(t.get('completed', [])),
+                        'weekly':    t.get('weekly_count', 0),
                         'scheduled': len(t.get('scheduled', []))})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
