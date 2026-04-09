@@ -492,6 +492,17 @@
   </div>
 </div>
 
+<!-- Color picker popup must be in content block so it exists before scripts run -->
+<div id="colorPickerPopup" style="display:none;">
+  <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
+  <div class="cp-swatch cp-red"         data-color="red"         title="Red"></div>
+  <div class="cp-swatch cp-blue"        data-color="blue"        title="Blue"></div>
+  <div class="cp-swatch cp-light_green" data-color="light_green" title="Light Green"></div>
+  <div class="cp-swatch cp-dark_green"  data-color="dark_green"  title="Dark Green"></div>
+  <div class="cp-swatch cp-purple"      data-color="purple"      title="Purple"></div>
+  <div class="cp-swatch cp-clear"       data-color=""            title="Clear">✕</div>
+</div>
+
 {% endblock %}
 
 
@@ -889,15 +900,4 @@ function clearNotes() {
 dpApplyFilters();
 dpSort(dpCurrentSort, true);
 </script>
-
-<!-- Shared color picker popup -->
-<div id="colorPickerPopup" style="display:none;">
-  <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
-  <div class="cp-swatch cp-red"         data-color="red"         title="Red"></div>
-  <div class="cp-swatch cp-blue"        data-color="blue"        title="Blue"></div>
-  <div class="cp-swatch cp-light_green" data-color="light_green" title="Light Green"></div>
-  <div class="cp-swatch cp-dark_green"  data-color="dark_green"  title="Dark Green"></div>
-  <div class="cp-swatch cp-purple"      data-color="purple"      title="Purple"></div>
-  <div class="cp-swatch cp-clear"       data-color=""            title="Clear">✕</div>
-</div>
 {% endblock %}
