@@ -1091,3 +1091,58 @@ body {
 .ml-row.row-color-dark_green  td:first-child { border-left: 4px solid #2E7D32; }
 .ml-row.row-color-purple      { background: rgba(142,36,170,.08) !important; }
 .ml-row.row-color-purple      td:first-child { border-left: 4px solid #8E24AA; }
+
+/* ── Activity Gauge (Daily Plan page) ────────────────────────────────────── */
+.gauge-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 24px 14px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.gauge-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+  align-self: flex-start;
+}
+.gauge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.gauge-svg {
+  width: 200px;
+  height: 120px;
+  flex-shrink: 0;
+}
+.gauge-count-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.gauge-count {
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+}
+.gauge-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.gauge-refreshed {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 6px;
+  align-self: flex-end;
+}
