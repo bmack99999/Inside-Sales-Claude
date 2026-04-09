@@ -1097,7 +1097,7 @@ body {
   display: flex;
   gap: 16px;
   margin-bottom: 18px;
-  align-items: flex-start;
+  align-items: stretch;
 }
 .dp-callbacks-col {
   flex: 0 0 48%;
@@ -1106,7 +1106,7 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
-  max-height: 340px;
+  height: 340px;
   display: flex;
   flex-direction: column;
 }
@@ -1117,7 +1117,7 @@ body {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   overflow: hidden;
-  max-height: 340px;
+  height: 340px;
   display: flex;
   flex-direction: column;
 }
