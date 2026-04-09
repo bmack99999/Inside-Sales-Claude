@@ -425,14 +425,15 @@ def extract_tasks():
     today = date.today()
     monday = today - timedelta(days=today.weekday())  # weekday(): Mon=0 … Sun=6
     weekly_raw = run_soql(
-        f"SELECT COUNT() "
+        f"SELECT Id "
         f"FROM Task "
         f"WHERE OwnerId = '{USER_ID}' "
         f"AND IsClosed = true "
         f"AND ActivityDate >= {monday.isoformat()} "
-        f"AND ActivityDate <= TODAY"
+        f"AND ActivityDate <= TODAY "
+        f"LIMIT 2000"
     )
-    weekly_count = weekly_raw[0].get('expr0', 0) if weekly_raw else 0
+    weekly_count = len(weekly_raw)
 
     # Open/scheduled tasks from today onward
     scheduled_raw = run_soql(
