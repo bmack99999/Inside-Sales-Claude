@@ -261,6 +261,23 @@ def dashboard():
     today_str = date.today().strftime('%A, %B %d, %Y').replace(' 0', ' ')
     stale_days = data_staleness_days()
 
+    # Build enriched leads/opps for the My Leads table embedded on this page
+    color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
+    all_leads = []
+    for l in Lead.query.order_by(Lead.last_activity_date.asc().nullsfirst()).all():
+        d = l.to_dict()
+        d['color']  = color_map.get(l.id)
+        d['timezone'] = get_phone_tz(l.phone)
+        d['sf_url'] = f"{SF_BASE}/lightning/r/Lead/{l.id}/view"
+        all_leads.append(d)
+    all_opps = []
+    for o in Opportunity.query.order_by(Opportunity.last_activity_date.asc().nullsfirst()).all():
+        d = o.to_dict()
+        d['color']  = color_map.get(o.id)
+        d['timezone'] = get_phone_tz(o.phone)
+        d['sf_url'] = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
+        all_opps.append(d)
+
     return render_template('dashboard.html',
         hot=hot, warm=warm, cool=cool, cold=cold,
         total=len(all_records),
@@ -269,6 +286,9 @@ def dashboard():
         today_str=today_str,
         stale_days=stale_days,
         callbacks=callbacks,
+        all_leads=all_leads,
+        all_opps=all_opps,
+        sf_base=SF_BASE,
     )
 
 
