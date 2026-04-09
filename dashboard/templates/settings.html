@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Settings — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Settings</h1>
+  </div>
+</div>
+
+<div class="settings-layout">
+
+  <!-- Left column nav -->
+  <nav class="settings-nav">
+    <a href="{{ url_for('settings', section='email_templates') }}"
+       class="settings-nav-item {% if section == 'email_templates' %}active{% endif %}">
+      <span class="settings-nav-icon">✉️</span>
+      Email Templates
+    </a>
+  </nav>
+
+  <!-- Right panel -->
+  <div class="settings-panel">
+
+    {% if section == 'email_templates' %}
+    <div class="settings-section">
+      <h2 class="settings-section-title">Email Templates</h2>
+      <p class="settings-section-desc">
+        Define up to 3 reusable email templates. Use <code>{first_name}</code>,
+        <code>{full_name}</code>, and <code>{company}</code> as merge tags — they'll be
+        replaced with each lead's actual info when drafts are generated.
+      </p>
+
+      <div class="et-templates">
+        {% for slot in [1, 2, 3] %}
+        {% set t = templates.get(slot, {}) %}
+        <div class="et-card" id="et-card-{{ slot }}">
+          <div class="et-card-header">
+            <span class="et-slot-badge">{{ slot }}</span>
+            <input type="text" class="et-name-input" id="et-name-{{ slot }}"
+                   placeholder="Template name (e.g. Cold Outreach)"
+                   value="{{ t.get('name', '') }}">
+            <span class="et-saved-badge" id="et-saved-{{ slot }}" style="display:none;">✓ Saved</span>
+          </div>
+          <div class="et-field">
+            <label class="et-label">Subject</label>
+            <input type="text" class="et-subject-input" id="et-subject-{{ slot }}"
+                   placeholder="e.g. Quick Question — SkyTab POS"
+                   value="{{ t.get('subject', '') }}">
+          </div>
+          <div class="et-field">
+            <label class="et-label">Body</label>
+            <textarea class="et-body-input" id="et-body-{{ slot }}"
+                      rows="7"
+                      placeholder="Hi {first_name},&#10;&#10;This is Bryce with SkyTab...">{{ t.get('body', '') }}</textarea>
+          </div>
+          <div class="et-card-footer">
+            <button class="et-save-btn" onclick="saveTemplate({{ slot }})">Save Template {{ slot }}</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div><!-- /settings-panel -->
+</div><!-- /settings-layout -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+function saveTemplate(slot) {
+  const name    = document.getElementById('et-name-'    + slot).value.trim();
+  const subject = document.getElementById('et-subject-' + slot).value.trim();
+  const body    = document.getElementById('et-body-'    + slot).value.trim();
+  const btn     = document.querySelector('#et-card-' + slot + ' .et-save-btn');
+  const badge   = document.getElementById('et-saved-' + slot);
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  fetch('/api/email_template', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slot, name, subject, body}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      btn.textContent = 'Save Template ' + slot;
+      btn.disabled = false;
+      badge.style.display = 'inline';
+      setTimeout(() => badge.style.display = 'none', 2500);
+    } else {
+      alert('Save failed: ' + (data.error || 'unknown error'));
+      btn.textContent = 'Save Template ' + slot;
+      btn.disabled = false;
+    }
+  })
+  .catch(e => {
+    alert('Save error: ' + e);
+    btn.textContent = 'Save Template ' + slot;
+    btn.disabled = false;
+  });
+}
+</script>
+{% endblock %}

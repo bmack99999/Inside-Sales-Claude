@@ -221,3 +221,29 @@ class SkippedToday(db.Model):
     skip_date  = db.Column(db.Text, nullable=False)
 
     __table_args__ = (db.UniqueConstraint('record_id', 'skip_date'),)
+
+
+class EmailTemplate(db.Model):
+    """User-defined email templates for auto-drafting. Slots 1–3."""
+    __tablename__ = 'email_templates'
+
+    id      = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    slot    = db.Column(db.Integer, nullable=False, unique=True)  # 1, 2, or 3
+    name    = db.Column(db.Text, default='')
+    subject = db.Column(db.Text, default='')
+    body    = db.Column(db.Text, default='')
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class LeadEmailQueue(db.Model):
+    """Tracks which leads/opps are queued for email drafting, and which template."""
+    __tablename__ = 'lead_email_queue'
+
+    sf_id    = db.Column(db.Text, primary_key=True)
+    slot     = db.Column(db.Integer, nullable=False)   # 1, 2, or 3
+    queued_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

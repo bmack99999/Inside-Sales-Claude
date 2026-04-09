@@ -12,6 +12,11 @@
       {% else %}No sync yet{% endif %}
     </div>
   </div>
+  <div class="header-actions">
+    <button class="btn-generate-drafts" id="generateDraftsBtn" onclick="generateDrafts()">
+      ✉ Generate Drafts <span class="gd-count" id="gdCount"></span>
+    </button>
+  </div>
 </div>
 
 <!-- Tab toggle -->
@@ -84,6 +89,7 @@
     <thead>
       <tr>
         <th class="color-th"></th>
+        <th class="email-th"></th>
         <th>Name</th>
         <th>Company</th>
         <th>Phone</th>
@@ -108,6 +114,12 @@
           <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
                data-sf-id="{{ l.id }}"
                onclick="openColorPicker(this)" title="Set color"></div>
+        </td>
+        <td class="email-cell">
+          <div class="eq-trigger {% if l.id in email_queue %}eq-active eq-slot-{{ email_queue[l.id] }}{% endif %}"
+               data-sf-id="{{ l.id }}"
+               data-record-email="{{ l.email or '' }}"
+               onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
         <td class="recycled-name">
           <a href="{{ l.sf_url }}" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
@@ -153,6 +165,7 @@
     <thead>
       <tr>
         <th class="color-th"></th>
+        <th class="email-th"></th>
         <th>Opportunity</th>
         <th>Account</th>
         <th>Contact</th>
@@ -178,6 +191,12 @@
           <div class="color-trigger {% if o.color %}cp-{{ o.color }}{% endif %}"
                data-sf-id="{{ o.id }}"
                onclick="openColorPicker(this)" title="Set color"></div>
+        </td>
+        <td class="email-cell">
+          <div class="eq-trigger {% if o.id in email_queue %}eq-active eq-slot-{{ email_queue[o.id] }}{% endif %}"
+               data-sf-id="{{ o.id }}"
+               data-record-email="{{ o.email or '' }}"
+               onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
         <td class="recycled-name">
           <a href="{{ o.sf_url }}" target="_blank" class="recycled-name-link">{{ o.name or '—' }}</a>
@@ -216,6 +235,14 @@
 {% endif %}
 {% endif %}
 
+<!-- Email template picker popup -->
+<div id="emailPickerPopup" style="display:none;">
+  <div class="ep-header">Queue Email Draft</div>
+  <div id="epSlots"></div>
+  <div class="ep-divider"></div>
+  <div class="ep-clear" onclick="selectEmailSlot(null)">✕ Clear</div>
+</div>
+
 <!-- Shared color picker popup -->
 <div id="colorPickerPopup" style="display:none;">
   <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
@@ -231,6 +258,109 @@
 
 {% block scripts %}
 <script>
+// ── Email queue state (server-side) ───────────────────────────────────────────
+const emailQueue = {{ email_queue | tojson }};  // {sf_id: slot}
+let emailTemplates = {};  // populated on load
+
+fetch('/api/email_templates').then(r => r.json()).then(data => {
+  emailTemplates = data;
+  buildEmailPickerSlots();
+  updateDraftCount();
+});
+
+function buildEmailPickerSlots() {
+  const container = document.getElementById('epSlots');
+  if (!container) return;
+  container.innerHTML = '';
+  [1, 2, 3].forEach(slot => {
+    const t = emailTemplates[slot] || {};
+    const name = t.name || ('Email ' + slot);
+    const div = document.createElement('div');
+    div.className = 'ep-slot';
+    div.dataset.slot = slot;
+    div.textContent = name;
+    div.onclick = () => selectEmailSlot(slot);
+    container.appendChild(div);
+  });
+}
+
+function updateDraftCount() {
+  const count = Object.keys(emailQueue).length;
+  const el = document.getElementById('gdCount');
+  if (el) el.textContent = count > 0 ? '(' + count + ')' : '';
+  const btn = document.getElementById('generateDraftsBtn');
+  if (btn) btn.disabled = count === 0;
+}
+
+// ── Email picker popup ─────────────────────────────────────────────────────────
+const epPopup = document.getElementById('emailPickerPopup');
+let activeEqTrigger = null;
+document.body.appendChild(epPopup);
+
+function openEmailPicker(trigger) {
+  if (activeEqTrigger === trigger && epPopup.style.display !== 'none') {
+    closeEmailPicker(); return;
+  }
+  activeEqTrigger = trigger;
+  const rect = trigger.getBoundingClientRect();
+  epPopup.style.display = 'block';
+  const popW = epPopup.offsetWidth || 180;
+  let left = rect.left + rect.width / 2 - popW / 2;
+  let top  = rect.bottom + 6;
+  left = Math.max(4, Math.min(left, window.innerWidth - popW - 4));
+  epPopup.style.left = left + 'px';
+  epPopup.style.top  = (top + window.scrollY) + 'px';
+
+  // Highlight current slot if active
+  const currentSlot = emailQueue[trigger.dataset.sfId];
+  epPopup.querySelectorAll('.ep-slot').forEach(s => {
+    s.classList.toggle('ep-slot-active', parseInt(s.dataset.slot) === currentSlot);
+  });
+}
+
+function closeEmailPicker() {
+  epPopup.style.display = 'none';
+  activeEqTrigger = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#emailPickerPopup') && !e.target.classList.contains('eq-trigger'))
+    closeEmailPicker();
+});
+
+function selectEmailSlot(slot) {
+  if (!activeEqTrigger) return;
+  const sfId = activeEqTrigger.dataset.sfId;
+  const trigger = activeEqTrigger;
+  closeEmailPicker();
+
+  if (slot) {
+    emailQueue[sfId] = slot;
+    trigger.classList.add('eq-active');
+    trigger.classList.remove('eq-slot-1','eq-slot-2','eq-slot-3');
+    trigger.classList.add('eq-slot-' + slot);
+    const t = emailTemplates[slot] || {};
+    trigger.title = 'Queued: ' + (t.name || 'Email ' + slot);
+  } else {
+    delete emailQueue[sfId];
+    trigger.className = 'eq-trigger';
+    trigger.title = 'Queue email draft';
+  }
+  updateDraftCount();
+
+  fetch('/api/email_queue', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({sf_id: sfId, slot: slot || null}),
+  }).catch(e => console.error('Email queue save error:', e));
+}
+
+function generateDrafts() {
+  const count = Object.keys(emailQueue).length;
+  if (!count) return;
+  alert('Draft generation coming soon! (' + count + ' queued)\n\nThis will create Gmail drafts once the Gmail tool is reconnected.');
+}
+
 // ── Color picker ──────────────────────────────────────────────────────────────
 const cpPopup = document.getElementById('colorPickerPopup');
 let activeTrigger = null;

@@ -47,7 +47,7 @@ from dateutil import parser as dateutil_parser
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor,
-                    SFTaskData, BossMetrics)
+                    SFTaskData, BossMetrics, EmailTemplate, LeadEmailQueue)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -75,6 +75,17 @@ with app.app_context():
             with db.engine.connect() as _c:
                 _c.execute(sa_text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}"))
                 _c.commit()
+
+    # Seed email template slots if not present
+    for slot in (1, 2, 3):
+        if not EmailTemplate.query.filter_by(slot=slot).first():
+            db.session.add(EmailTemplate(
+                slot=slot,
+                name=f'Email {slot}',
+                subject='',
+                body='',
+            ))
+    db.session.commit()
 
 SF_BASE = "https://crmcredorax.lightning.force.com"
 
@@ -344,12 +355,15 @@ def my_leads():
         refresh_type='salesforce').order_by(RefreshLog.id.desc()).first()
     refresh_info = log.to_dict() if log else {}
 
+    email_queue = {q.sf_id: q.slot for q in LeadEmailQueue.query.all()}
+
     return render_template('my_leads.html',
         leads=leads, opps=opps,
         tab=tab, phone_only=phone_only,
         source_filter=source_filter, stage_filter=stage_filter,
         lead_sources=lead_sources, opp_stages=opp_stages,
         refresh_info=refresh_info,
+        email_queue=email_queue,
         sf_base=SF_BASE,
     )
 
@@ -883,6 +897,77 @@ def set_lead_color():
 
     db.session.commit()
     return jsonify({'ok': True, 'sf_id': sf_id, 'color': color})
+
+
+# ── Settings ─────────────────────────────────────────────────────────────────
+
+@app.route('/settings')
+@app.route('/settings/<section>')
+def settings(section='email_templates'):
+    templates = {t.slot: t.to_dict()
+                 for t in EmailTemplate.query.order_by(EmailTemplate.slot).all()}
+    return render_template('settings.html',
+        section=section,
+        templates=templates,
+    )
+
+
+@app.route('/api/email_template', methods=['POST'])
+def save_email_template():
+    data  = request.get_json() or {}
+    slot  = int(data.get('slot', 0))
+    if slot not in (1, 2, 3):
+        return jsonify({'error': 'slot must be 1, 2, or 3'}), 400
+    t = EmailTemplate.query.filter_by(slot=slot).first()
+    if not t:
+        t = EmailTemplate(slot=slot)
+        db.session.add(t)
+    t.name    = data.get('name', '').strip()
+    t.subject = data.get('subject', '').strip()
+    t.body    = data.get('body', '').strip()
+    db.session.commit()
+    return jsonify({'ok': True, 'slot': slot})
+
+
+@app.route('/api/email_templates')
+def get_email_templates():
+    templates = {str(t.slot): t.to_dict()
+                 for t in EmailTemplate.query.order_by(EmailTemplate.slot).all()}
+    return jsonify(templates)
+
+
+# ── Email Queue ────────────────────────────────────────────────────────────────
+
+@app.route('/api/email_queue', methods=['POST'])
+def set_email_queue():
+    """Set or clear the email template queued for a lead/opp."""
+    data  = request.get_json() or {}
+    sf_id = data.get('sf_id', '').strip()
+    slot  = data.get('slot')   # int 1/2/3 or None/0 to clear
+    if not sf_id:
+        return jsonify({'error': 'sf_id required'}), 400
+    existing = LeadEmailQueue.query.get(sf_id)
+    if slot:
+        slot = int(slot)
+        if existing:
+            existing.slot = slot
+        else:
+            db.session.add(LeadEmailQueue(
+                sf_id=sf_id, slot=slot,
+                queued_at=datetime.now().isoformat(),
+            ))
+    else:
+        if existing:
+            db.session.delete(existing)
+    db.session.commit()
+    return jsonify({'ok': True, 'sf_id': sf_id, 'slot': slot})
+
+
+@app.route('/api/email_queue')
+def get_email_queue():
+    """Return all queued items as {sf_id: slot}."""
+    queue = {q.sf_id: q.slot for q in LeadEmailQueue.query.all()}
+    return jsonify(queue)
 
 
 if __name__ == '__main__':
