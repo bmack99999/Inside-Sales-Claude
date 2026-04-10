@@ -237,6 +237,18 @@ class EmailTemplate(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+class UserNotes(db.Model):
+    """Persistent notes pad — single row, keyed by note_key."""
+    __tablename__ = 'user_notes'
+
+    note_key  = db.Column(db.Text, primary_key=True)
+    content   = db.Column(db.Text, default='')
+    updated_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 class LeadEmailQueue(db.Model):
     """Tracks which leads/opps are queued for email drafting, and which template."""
     __tablename__ = 'lead_email_queue'

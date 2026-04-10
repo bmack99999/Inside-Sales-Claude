@@ -147,8 +147,8 @@
       <button class="btn btn-secondary btn-sm" onclick="clearNotes()" style="margin-left:auto">Clear</button>
     </div>
     <textarea id="dp-notes-pad" class="dp-notes-textarea"
-              placeholder="Type your notes here — auto-saved in your browser..."
-              oninput="saveNotes()"></textarea>
+              placeholder="Type your notes here — auto-saved..."
+              oninput="scheduleNotesSave()"></textarea>
   </div>
 
 </div>
@@ -881,19 +881,40 @@ cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
   });
 });
 
-// ── Notes pad ────────────────────────────────────────────────────────────────
-const NOTES_KEY = 'dp_notes_v1';
-(function loadNotes() {
-  const saved = localStorage.getItem(NOTES_KEY);
-  if (saved) document.getElementById('dp-notes-pad').value = saved;
-})();
-function saveNotes() {
-  localStorage.setItem(NOTES_KEY, document.getElementById('dp-notes-pad').value);
+// ── Notes pad (server-persisted) ─────────────────────────────────────────────
+const NOTES_DB_KEY = 'daily_plan';
+let _notesSaveTimer = null;
+
+// Load from server on page open
+fetch('/api/notes/' + NOTES_DB_KEY)
+  .then(r => r.json())
+  .then(data => {
+    const pad = document.getElementById('dp-notes-pad');
+    if (pad && data.content) pad.value = data.content;
+  })
+  .catch(() => {});
+
+function scheduleNotesSave() {
+  clearTimeout(_notesSaveTimer);
+  _notesSaveTimer = setTimeout(flushNotesSave, 800);
 }
+
+function flushNotesSave() {
+  const content = document.getElementById('dp-notes-pad').value;
+  fetch('/api/notes/' + NOTES_DB_KEY, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content}),
+  }).catch(() => {});
+}
+
+// Save immediately when navigating away
+window.addEventListener('beforeunload', flushNotesSave);
+
 function clearNotes() {
   if (!confirm('Clear all notes?')) return;
   document.getElementById('dp-notes-pad').value = '';
-  localStorage.removeItem(NOTES_KEY);
+  flushNotesSave();
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

@@ -47,7 +47,8 @@ from dateutil import parser as dateutil_parser
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor,
-                    SFTaskData, BossMetrics, EmailTemplate, LeadEmailQueue)
+                    SFTaskData, BossMetrics, EmailTemplate, LeadEmailQueue,
+                    UserNotes)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -971,6 +972,27 @@ def get_email_queue():
     """Return all queued items as {sf_id: slot}."""
     queue = {q.sf_id: q.slot for q in LeadEmailQueue.query.all()}
     return jsonify(queue)
+
+
+# ── Notes pad ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/notes/<note_key>')
+def get_notes(note_key):
+    row = UserNotes.query.get(note_key)
+    return jsonify({'content': row.content if row else ''})
+
+
+@app.route('/api/notes/<note_key>', methods=['POST'])
+def save_notes(note_key):
+    data = request.get_json() or {}
+    row = UserNotes.query.get(note_key)
+    if not row:
+        row = UserNotes(note_key=note_key, content='')
+        db.session.add(row)
+    row.content    = data.get('content', '')
+    row.updated_at = datetime.now().isoformat()
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 if __name__ == '__main__':
