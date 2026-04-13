@@ -908,8 +908,14 @@ function flushNotesSave() {
   }).catch(() => {});
 }
 
-// Save immediately when navigating away
-window.addEventListener('beforeunload', flushNotesSave);
+// Save immediately when navigating away.
+// fetch() is cancelled by the browser on unload — sendBeacon survives page teardown.
+window.addEventListener('beforeunload', () => {
+  clearTimeout(_notesSaveTimer);
+  const content = document.getElementById('dp-notes-pad').value;
+  const blob = new Blob([JSON.stringify({content})], {type: 'application/json'});
+  navigator.sendBeacon('/api/notes/' + NOTES_DB_KEY, blob);
+});
 
 function clearNotes() {
   if (!confirm('Clear all notes?')) return;

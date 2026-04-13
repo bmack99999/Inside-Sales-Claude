@@ -974,6 +974,50 @@ def get_email_queue():
     return jsonify(queue)
 
 
+@app.route('/api/log_email_tasks', methods=['POST'])
+def log_email_tasks():
+    """Create completed Email tasks in Salesforce for the given leads.
+
+    Expects JSON: {"tasks": [{"sf_id": "...", "subject": "..."}]}
+    Uses the SF CLI (alias: shift4) to create Task records.
+    """
+    SF_ALIAS = 'shift4'
+    data = request.get_json() or {}
+    tasks = data.get('tasks', [])
+    if not tasks:
+        return jsonify({'error': 'tasks list required'}), 400
+
+    results = []
+    for t in tasks:
+        sf_id   = t.get('sf_id', '').strip()
+        subject = t.get('subject', 'Email').strip()
+        if not sf_id:
+            results.append({'sf_id': sf_id, 'ok': False, 'error': 'missing sf_id'})
+            continue
+        try:
+            values = (
+                f"WhoId='{sf_id}' "
+                f"Subject='{subject}' "
+                f"Status='Completed' "
+                f"Type='Email'"
+            )
+            result = subprocess.run(
+                ['sf', 'data', 'create', 'record',
+                 '--target-org', SF_ALIAS,
+                 '--sobject', 'Task',
+                 '--values', values],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                results.append({'sf_id': sf_id, 'ok': True})
+            else:
+                results.append({'sf_id': sf_id, 'ok': False, 'error': result.stderr.strip()})
+        except Exception as e:
+            results.append({'sf_id': sf_id, 'ok': False, 'error': str(e)})
+
+    return jsonify({'results': results})
+
+
 # ── Notes pad ─────────────────────────────────────────────────────────────────
 
 @app.route('/api/notes/<note_key>')
