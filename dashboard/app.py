@@ -391,6 +391,16 @@ def api_metrics():
     return jsonify(row.to_dict() if row else {})
 
 
+@app.route('/api/team_metrics')
+def api_team_metrics():
+    path = os.path.join(os.path.dirname(__file__), 'data', 'team_metrics.json')
+    try:
+        with open(path) as f:
+            return jsonify(json.load(f))
+    except FileNotFoundError:
+        return jsonify({'error': 'No team data yet — run Refresh SF Data'})
+
+
 @app.route('/api/tasks')
 def api_tasks():
     try:

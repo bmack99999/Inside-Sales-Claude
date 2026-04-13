@@ -93,6 +93,37 @@
   <canvas id="bossChart" height="80"></canvas>
 </div>
 
+<!-- ── Team Leaderboard ───────────────────────────────────────────────────── -->
+<div class="section-divider" style="margin-top:28px">Team Leaderboard — <span id="team-month">Loading...</span></div>
+<div class="log-table-card" style="margin-bottom:24px">
+  <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>MTD Performance vs Team</span>
+    <span class="sf-tasks-meta" id="team-refreshed" style="font-size:11px;color:#888"></span>
+  </div>
+  <table class="log-table" id="team-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;width:30px">#</th>
+        <th style="text-align:left">Rep</th>
+        <th>Leads</th>
+        <th>Conv%</th>
+        <th>Won</th>
+        <th>UW</th>
+        <th>Total</th>
+        <th>Rate</th>
+        <th>APV Won</th>
+        <th>Calls</th>
+      </tr>
+    </thead>
+    <tbody id="team-tbody">
+      <tr><td colspan="10" class="table-empty">Loading...</td></tr>
+    </tbody>
+  </table>
+  <div style="margin-top:8px;font-size:11px;color:#aaa;padding:0 4px">
+    Won = Closed Won &nbsp;·&nbsp; UW = Underwriting Review (counted as wins) &nbsp;·&nbsp; Rate = (Won + UW) / Leads
+  </div>
+</div>
+
 <!-- ── SF Tasks ────────────────────────────────────────────────────────────── -->
 <div class="sf-tasks-grid">
   <div class="sf-tasks-card">
@@ -261,6 +292,50 @@ fetch('/api/metrics')
   })
   .catch(() => {
     document.getElementById('metrics-refreshed').textContent = 'Could not load metrics';
+  });
+
+// ── Team Leaderboard ──────────────────────────────────────────────────────────
+fetch('/api/team_metrics')
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      document.getElementById('team-tbody').innerHTML =
+        `<tr><td colspan="10" class="table-empty">${data.error}</td></tr>`;
+      return;
+    }
+    document.getElementById('team-month').textContent    = data.month || '';
+    document.getElementById('team-refreshed').textContent = data.refreshed_at ? 'as of ' + data.refreshed_at : '';
+
+    const fmtApv = n => {
+      if (!n) return '—';
+      if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+      return '$' + n.toLocaleString();
+    };
+    const pct = (a, b) => b ? Math.round(a/b*100) + '%' : '—';
+
+    const tbody = document.getElementById('team-tbody');
+    tbody.innerHTML = (data.reps || []).map(r => {
+      const total   = r.won + r.uw;
+      const isMe    = r.is_me;
+      const rowCls  = isMe ? 'style="background:#e8f0fe;font-weight:600"' : '';
+      const nameLbl = isMe ? r.name + ' ◀' : r.name;
+      return `<tr ${rowCls}>
+        <td style="color:#888;font-size:12px">${r.rank}</td>
+        <td style="text-align:left">${nameLbl}</td>
+        <td>${r.leads}</td>
+        <td>${pct(r.converted, r.leads)}</td>
+        <td>${r.won}</td>
+        <td style="color:#6b7280">${r.uw}</td>
+        <td><strong>${total}</strong></td>
+        <td>${pct(total, r.leads)}</td>
+        <td style="color:#059669">${fmtApv(r.apv_won)}</td>
+        <td>${r.calls}</td>
+      </tr>`;
+    }).join('');
+  })
+  .catch(() => {
+    document.getElementById('team-tbody').innerHTML =
+      '<tr><td colspan="10" class="table-empty">Could not load team data</td></tr>';
   });
 
 // ── SF Tasks ──────────────────────────────────────────────────────────────────
