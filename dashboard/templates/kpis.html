@@ -102,17 +102,17 @@
   </div>
   <table class="log-table" id="team-table">
     <thead>
-      <tr>
+      <tr id="team-thead-row">
         <th style="text-align:left;width:30px">#</th>
-        <th style="text-align:left">Rep</th>
-        <th>Leads</th>
-        <th>Conv%</th>
-        <th>Won</th>
-        <th>UW</th>
-        <th>Total</th>
-        <th>Rate</th>
-        <th>APV Won</th>
-        <th>Calls</th>
+        <th class="team-th-sort" data-col="name"    style="text-align:left;cursor:pointer">Rep</th>
+        <th class="team-th-sort" data-col="leads"   style="cursor:pointer">Leads</th>
+        <th class="team-th-sort" data-col="conv_pct" style="cursor:pointer">Conv%</th>
+        <th class="team-th-sort" data-col="won"     style="cursor:pointer">Won</th>
+        <th class="team-th-sort" data-col="uw"      style="cursor:pointer">UW</th>
+        <th class="team-th-sort" data-col="total"   style="cursor:pointer">Total</th>
+        <th class="team-th-sort" data-col="rate"    style="cursor:pointer">Rate</th>
+        <th class="team-th-sort" data-col="apv_won" style="cursor:pointer">APV Won</th>
+        <th class="team-th-sort" data-col="calls"   style="cursor:pointer">Calls</th>
       </tr>
     </thead>
     <tbody id="team-tbody">
@@ -295,6 +295,71 @@ fetch('/api/metrics')
   });
 
 // ── Team Leaderboard ──────────────────────────────────────────────────────────
+let _teamReps      = [];
+let _teamSortCol   = 'total';
+let _teamSortAsc   = false;
+
+const fmtApv = n => {
+  if (!n) return '—';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+  return '$' + n.toLocaleString();
+};
+const teamPct = (a, b) => b ? Math.round(a/b*100) : -1;
+
+function teamSortVal(r, col) {
+  const total = r.won + r.uw;
+  switch(col) {
+    case 'name':     return r.name;
+    case 'leads':    return r.leads;
+    case 'conv_pct': return teamPct(r.converted, r.leads);
+    case 'won':      return r.won;
+    case 'uw':       return r.uw;
+    case 'total':    return total;
+    case 'rate':     return teamPct(total, r.leads);
+    case 'apv_won':  return r.apv_won || 0;
+    case 'calls':    return r.calls;
+    default:         return 0;
+  }
+}
+
+function renderTeamTable() {
+  const sorted = [..._teamReps].sort((a, b) => {
+    const av = teamSortVal(a, _teamSortCol);
+    const bv = teamSortVal(b, _teamSortCol);
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+    return _teamSortAsc ? cmp : -cmp;
+  });
+
+  // Update header indicators
+  document.querySelectorAll('.team-th-sort').forEach(th => {
+    const col = th.dataset.col;
+    const arrow = col === _teamSortCol ? (_teamSortAsc ? ' ▲' : ' ▼') : ' ⇅';
+    th.textContent = th.textContent.replace(/ [▲▼⇅]$/, '') + arrow;
+    th.style.color = col === _teamSortCol ? '#1d4ed8' : '';
+  });
+
+  const pctFmt = (a, b) => { const v = teamPct(a,b); return v < 0 ? '—' : v + '%'; };
+
+  document.getElementById('team-tbody').innerHTML = sorted.map((r, i) => {
+    const total   = r.won + r.uw;
+    const isMe    = r.is_me;
+    const rowCls  = isMe ? 'style="background:#e8f0fe;font-weight:600"' : '';
+    const nameLbl = isMe ? r.name + ' ◀' : r.name;
+    return `<tr ${rowCls}>
+      <td style="color:#888;font-size:12px">${i + 1}</td>
+      <td style="text-align:left">${nameLbl}</td>
+      <td>${r.leads}</td>
+      <td>${pctFmt(r.converted, r.leads)}</td>
+      <td>${r.won}</td>
+      <td style="color:#6b7280">${r.uw}</td>
+      <td><strong>${total}</strong></td>
+      <td>${pctFmt(total, r.leads)}</td>
+      <td style="color:#059669">${fmtApv(r.apv_won)}</td>
+      <td>${r.calls}</td>
+    </tr>`;
+  }).join('');
+}
+
 fetch('/api/team_metrics')
   .then(r => r.json())
   .then(data => {
@@ -303,35 +368,24 @@ fetch('/api/team_metrics')
         `<tr><td colspan="10" class="table-empty">${data.error}</td></tr>`;
       return;
     }
-    document.getElementById('team-month').textContent    = data.month || '';
+    document.getElementById('team-month').textContent     = data.month || '';
     document.getElementById('team-refreshed').textContent = data.refreshed_at ? 'as of ' + data.refreshed_at : '';
+    _teamReps = data.reps || [];
+    renderTeamTable();
 
-    const fmtApv = n => {
-      if (!n) return '—';
-      if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
-      return '$' + n.toLocaleString();
-    };
-    const pct = (a, b) => b ? Math.round(a/b*100) + '%' : '—';
-
-    const tbody = document.getElementById('team-tbody');
-    tbody.innerHTML = (data.reps || []).map(r => {
-      const total   = r.won + r.uw;
-      const isMe    = r.is_me;
-      const rowCls  = isMe ? 'style="background:#e8f0fe;font-weight:600"' : '';
-      const nameLbl = isMe ? r.name + ' ◀' : r.name;
-      return `<tr ${rowCls}>
-        <td style="color:#888;font-size:12px">${r.rank}</td>
-        <td style="text-align:left">${nameLbl}</td>
-        <td>${r.leads}</td>
-        <td>${pct(r.converted, r.leads)}</td>
-        <td>${r.won}</td>
-        <td style="color:#6b7280">${r.uw}</td>
-        <td><strong>${total}</strong></td>
-        <td>${pct(total, r.leads)}</td>
-        <td style="color:#059669">${fmtApv(r.apv_won)}</td>
-        <td>${r.calls}</td>
-      </tr>`;
-    }).join('');
+    // Wire up sortable headers
+    document.querySelectorAll('.team-th-sort').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (_teamSortCol === col) {
+          _teamSortAsc = !_teamSortAsc;
+        } else {
+          _teamSortCol = col;
+          _teamSortAsc = col === 'name';  // name sorts A→Z by default, numbers desc
+        }
+        renderTeamTable();
+      });
+    });
   })
   .catch(() => {
     document.getElementById('team-tbody').innerHTML =
