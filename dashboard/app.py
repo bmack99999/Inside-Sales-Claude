@@ -402,9 +402,11 @@ def api_team_metrics():
 @app.route('/api/daily_workflow')
 def api_daily_workflow():
     """Generate a prioritized daily workflow: opps, callbacks, recycled leads."""
-    from datetime import timedelta
-    now = datetime.now()
-    today_str = date.today().isoformat()
+    from datetime import timedelta, timezone as tz
+    utc_now = datetime.now(tz.utc)
+    et_offset = timedelta(hours=-4)  # EDT (Apr–Nov)
+    now = utc_now + et_offset
+    today_str = now.date().isoformat()
 
     # ── Focus Opportunities ──────────────────────────────────────────────
     opps = [enrich_record(o.to_dict()) for o in Opportunity.query.all()]
@@ -506,7 +508,7 @@ def api_daily_workflow():
     recycled_picks = candidates[:50]
 
     return jsonify({
-        'generated_at': now.strftime('%Y-%m-%d %I:%M %p'),
+        'generated_at': now.strftime('%Y-%m-%d %I:%M %p') + ' ET',
         'focus_opps': focus_opps[:10],
         'focus_leads': focus_leads[:10],
         'callbacks_due': cb_due,
