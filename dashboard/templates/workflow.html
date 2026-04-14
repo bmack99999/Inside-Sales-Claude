@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Daily Workflow — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Daily Workflow</h1>
+    <div class="header-meta" id="wf-generated">Loading...</div>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-secondary btn-sm" onclick="loadWorkflow()">&#8635; Refresh</button>
+  </div>
+</div>
+
+<!-- Priority Opps + Leads -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+  <div class="log-table-card" style="margin:0">
+    <div class="log-table-title">Priority Opportunities</div>
+    <table class="log-table" style="font-size:12px">
+      <thead><tr>
+        <th style="text-align:left">Name</th>
+        <th>Stage</th>
+        <th>Next Task</th>
+        <th>Score</th>
+      </tr></thead>
+      <tbody id="wf-opps"><tr><td colspan="4" class="table-empty">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="log-table-card" style="margin:0">
+    <div class="log-table-title">Priority Leads</div>
+    <table class="log-table" style="font-size:12px">
+      <thead><tr>
+        <th style="text-align:left">Name</th>
+        <th>Company</th>
+        <th>Status</th>
+        <th>Next Task</th>
+        <th>Score</th>
+      </tr></thead>
+      <tbody id="wf-leads"><tr><td colspan="5" class="table-empty">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Callbacks Due -->
+<div class="log-table-card" style="margin-bottom:16px">
+  <div class="log-table-title">Callbacks Due / Overdue</div>
+  <table class="log-table" style="font-size:12px">
+    <thead><tr>
+      <th style="text-align:left">Name</th>
+      <th>Due</th>
+      <th>Notes</th>
+      <th>Attempts</th>
+    </tr></thead>
+    <tbody id="wf-callbacks"><tr><td colspan="4" class="table-empty">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Recycled Leads -->
+<div class="log-table-card">
+  <div class="log-table-title" style="display:flex;align-items:center;gap:8px">
+    Recycled Leads to Contact
+    <span id="wf-recycle-meta" style="font-size:11px;color:#888;font-weight:400"></span>
+  </div>
+  <table class="log-table" style="font-size:12px">
+    <thead><tr>
+      <th style="text-align:left;width:30px">#</th>
+      <th style="text-align:left">Name</th>
+      <th>Company</th>
+      <th>Phone</th>
+      <th>TZ</th>
+      <th>Source</th>
+      <th>Category</th>
+      <th>Attempts</th>
+      <th>Last Activity</th>
+    </tr></thead>
+    <tbody id="wf-recycled"><tr><td colspan="9" class="table-empty">Loading...</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SF_BASE = '{{ sf_base }}';
+
+function sfLink(id, name, type) {
+  const t = type === 'opportunity' ? 'Opportunity' : 'Lead';
+  return `<a href="${SF_BASE}/lightning/r/${t}/${id}/view" target="_blank" class="recycled-name-link">${name || '—'}</a>`;
+}
+
+function loadWorkflow() {
+  document.getElementById('wf-generated').textContent = 'Loading...';
+  fetch('/api/daily_workflow')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('wf-generated').textContent =
+        data.generated_at
+          ? 'Generated ' + data.generated_at + ' · TZ focus: ' + (data.tz_preference || []).join(', ')
+          : '';
+
+      // ── Priority Opps ──
+      const opps = data.focus_opps || [];
+      document.getElementById('wf-opps').innerHTML = opps.length
+        ? opps.map(o => {
+            const task    = o.next_step || o.next_task || '—';
+            const taskDue = o.next_task_due
+              ? ` <span style="color:#888;font-size:11px">(${o.next_task_due})</span>` : '';
+            const tier    = (o._tier_class || 'badge-cold').replace('badge-', '');
+            return `<tr>
+              <td style="text-align:left">${sfLink(o.id, o.name || o.account_name, 'opportunity')}</td>
+              <td><span class="ml-status">${o.stage || '—'}</span></td>
+              <td>${task}${taskDue}</td>
+              <td><span class="badge-${tier}" style="padding:2px 6px;border-radius:4px;font-size:11px">${o._score}</span></td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="4" class="table-empty">No active opportunities</td></tr>';
+
+      // ── Priority Leads ──
+      const leads = data.focus_leads || [];
+      document.getElementById('wf-leads').innerHTML = leads.length
+        ? leads.map(l => {
+            const task    = l.next_task || '—';
+            const taskDue = l.next_task_due
+              ? ` <span style="color:#888;font-size:11px">(${l.next_task_due})</span>` : '';
+            const tier    = (l._tier_class || 'badge-cold').replace('badge-', '');
+            const status  = (l.status || 'other').toLowerCase().replace(/ /g, '_');
+            return `<tr>
+              <td style="text-align:left">${sfLink(l.id, l.name, 'lead')}</td>
+              <td>${l.company || '—'}</td>
+              <td><span class="ml-status ml-status-${status}">${l.status || '—'}</span></td>
+              <td>${task}${taskDue}</td>
+              <td><span class="badge-${tier}" style="padding:2px 6px;border-radius:4px;font-size:11px">${l._score}</span></td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="5" class="table-empty">No active leads</td></tr>';
+
+      // ── Callbacks ──
+      const cbs = [...(data.callbacks_due || []), ...(data.callbacks_upcoming || [])];
+      document.getElementById('wf-callbacks').innerHTML = cbs.length
+        ? cbs.map(c => {
+            const dueStyle = c._task_overdue
+              ? 'color:#ef4444;font-weight:600'
+              : (c._task_due_today ? 'color:#f59e0b;font-weight:600' : '');
+            return `<tr>
+              <td style="text-align:left">${c.name || '—'}</td>
+              <td style="${dueStyle}">${c.task_due || '—'}${c._task_overdue ? ' ⚠' : ''}</td>
+              <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.notes || c.last_call_notes || '—'}</td>
+              <td>${c.call_attempts || 0}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="4" class="table-empty">No callbacks due</td></tr>';
+
+      // ── Recycled Picks ──
+      const picks = data.recycled_picks || [];
+      document.getElementById('wf-recycle-meta').textContent =
+        `${picks.length} selected from ${data.recycled_total_candidates || 0} eligible`;
+
+      const catLabel = c => ({'had_conversation':'Spoke','no_contact':'No Contact','no_activity':'Untouched'}[c] || c || '—');
+      const catStyle = c => ({'had_conversation':'color:#059669','no_contact':'color:#d97706','no_activity':'color:#6b7280'}[c] || '');
+
+      document.getElementById('wf-recycled').innerHTML = picks.length
+        ? picks.map((r, i) => `<tr>
+            <td style="color:#888;font-size:11px">${i + 1}</td>
+            <td style="text-align:left">${sfLink(r.id, r.name, 'lead')}</td>
+            <td>${r.company || '—'}</td>
+            <td>${r.phone ? `<a href="tel:${r.phone}" class="card-phone">${r.phone}</a>` : '—'}</td>
+            <td>${r._timezone ? `<span class="tz-badge tz-${r._timezone}">${r._timezone}</span>` : '—'}</td>
+            <td><span class="recycled-source">${r.lead_source || '—'}</span></td>
+            <td style="${catStyle(r.category)};font-size:11px">${catLabel(r.category)}</td>
+            <td>${r.attempt_count || 0}</td>
+            <td>${r.last_activity_date || 'Never'}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="9" class="table-empty">No recycled leads available</td></tr>';
+    })
+    .catch(() => {
+      document.getElementById('wf-generated').textContent = 'Failed to load — try refreshing';
+    });
+}
+
+loadWorkflow();
+</script>
+{% endblock %}

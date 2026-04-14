@@ -371,6 +371,11 @@ def my_leads():
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
+@app.route('/workflow')
+def workflow():
+    return render_template('workflow.html', sf_base=SF_BASE)
+
+
 @app.route('/kpis')
 def kpis():
     kpi_log = [k.to_dict() for k in
