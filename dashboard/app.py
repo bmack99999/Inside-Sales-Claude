@@ -47,8 +47,8 @@ from dateutil import parser as dateutil_parser
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor,
-                    SFTaskData, BossMetrics, EmailTemplate, LeadEmailQueue,
-                    UserNotes)
+                    SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
+                    LeadEmailQueue, UserNotes)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -393,12 +393,10 @@ def api_metrics():
 
 @app.route('/api/team_metrics')
 def api_team_metrics():
-    path = os.path.join(os.path.dirname(__file__), 'data', 'team_metrics.json')
-    try:
-        with open(path) as f:
-            return jsonify(json.load(f))
-    except FileNotFoundError:
+    row = TeamMetrics.query.order_by(TeamMetrics.id.desc()).first()
+    if not row:
         return jsonify({'error': 'No team data yet — run Refresh SF Data'})
+    return jsonify(row.to_dict())
 
 
 @app.route('/api/tasks')
@@ -762,6 +760,18 @@ def api_ingest():
                         'completed': len(t.get('completed', [])),
                         'weekly':    t.get('weekly_count', 0),
                         'scheduled': len(t.get('scheduled', []))})
+
+    elif ingest_type == 'team_metrics':
+        t = data.get('team_metrics', {})
+        TeamMetrics.query.delete()
+        db.session.add(TeamMetrics(
+            refreshed_at = t.get('refreshed_at'),
+            month        = t.get('month'),
+            month_start  = t.get('month_start'),
+            reps         = t.get('reps', []),
+        ))
+        db.session.commit()
+        return jsonify({'ok': True, 'reps': len(t.get('reps', []))})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
 

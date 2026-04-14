@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """
 Extract team leaderboard metrics from Salesforce via SF CLI.
-Writes dashboard/data/team_metrics.json.
+Writes dashboard/data/team_metrics.json and POSTs to Railway.
 """
 
 import json
+import os
 import subprocess
 import sys
 from collections import defaultdict
 from datetime import date, datetime
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
+DASHBOARD_URL  = os.environ.get("DASHBOARD_URL", "https://web-production-980e0.up.railway.app")
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d")
 
 SF_ALIAS = "shift4"
 MY_ID    = "005Pd0000084UhFIAU"
@@ -130,6 +139,25 @@ def main():
         you   = " ◀" if r["is_me"] else ""
         print(f"    #{r['rank']} {r['name']:<22} {r['leads']:>4} leads  "
               f"{r['won']}W/{r['uw']}UW={total} ({rate}){you}")
+
+    # POST to Railway dashboard so the live site updates immediately
+    if requests:
+        print(f"\n  Posting to Railway dashboard...")
+        try:
+            resp = requests.post(
+                f"{DASHBOARD_URL}/api/ingest",
+                json={"type": "team_metrics", "team_metrics": output},
+                headers={"X-API-Key": INGEST_API_KEY},
+                timeout=15,
+            )
+            if resp.ok:
+                print(f"  Dashboard updated ✓")
+            else:
+                print(f"  Dashboard POST failed: {resp.status_code} {resp.text[:100]}")
+        except Exception as e:
+            print(f"  Dashboard POST error: {e}")
+    else:
+        print("  (requests not installed — skipping Railway push)")
 
 
 if __name__ == "__main__":

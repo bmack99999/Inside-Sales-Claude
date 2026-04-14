@@ -196,6 +196,20 @@ class BossMetrics(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+class TeamMetrics(db.Model):
+    """Stores MTD team leaderboard data pulled from Salesforce via SF CLI."""
+    __tablename__ = 'team_metrics'
+
+    id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    refreshed_at = db.Column(db.Text)
+    month        = db.Column(db.Text)
+    month_start  = db.Column(db.Text)
+    reps         = db.Column(JsonList)   # list of rep dicts
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 class SFTaskData(db.Model):
     """Stores today's completed + upcoming scheduled tasks pulled from Salesforce."""
     __tablename__ = 'sf_task_data'
