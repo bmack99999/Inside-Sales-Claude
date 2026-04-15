@@ -1042,7 +1042,7 @@ body {
 }
 .ml-tab:hover { background: #e8ecf2; color: var(--text); }
 .ml-tab-active {
-  background: var(--navy); color: #fff !important;
+  background: var(--navy); color: #fff;
   border-color: var(--navy);
 }
 .ml-tab-icon { font-size: 14px; }
