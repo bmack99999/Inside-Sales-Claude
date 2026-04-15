@@ -94,8 +94,7 @@
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
         <th>TZ</th>
-        <th>Notes</th>
-        {% if converted != 'leads' %}<th>Opportunity</th>{% endif %}
+        <th class="notes-th">Notes</th>
       </tr>
     </thead>
     <tbody>
@@ -132,17 +131,9 @@
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td class="recycled-notes-cell">
           {% if l.attempt_summary and l.attempt_summary != 'No activity' %}
-            <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:60] }}{{ '...' if l.attempt_summary|length > 60 }}</span>
+            <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:200] }}{{ '...' if l.attempt_summary|length > 200 }}</span>
           {% else %}—{% endif %}
         </td>
-        {% if converted != 'leads' %}
-        <td>
-          {% if l.converted_opp_id %}
-            <a href="{{ sf_base }}/lightning/r/Opportunity/{{ l.converted_opp_id }}/view"
-               target="_blank" class="recycled-opp-link">&#128200; View Opp</a>
-          {% else %}—{% endif %}
-        </td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>

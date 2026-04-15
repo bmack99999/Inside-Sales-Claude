@@ -873,8 +873,9 @@ body {
   background: var(--cool-bg); color: var(--cool); font-size: 11px; font-weight: 600;
   white-space: nowrap;
 }
-.recycled-notes-cell { max-width: 220px; }
-.recycled-notes { font-size: 12px; color: var(--text-light); }
+.notes-th { width: 99%; }
+.recycled-notes-cell { width: 99%; min-width: 200px; }
+.recycled-notes { font-size: 12px; color: var(--text-light); white-space: normal; word-break: break-word; }
 .recycled-converted-toggle {
   display: flex; gap: 8px; margin-bottom: 12px;
 }
