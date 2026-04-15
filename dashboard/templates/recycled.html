@@ -23,38 +23,19 @@
   </div>
 </div>
 
-<!-- Category Tabs -->
-<div class="recycled-tabs">
-  <a href="{{ url_for('recycled', category='no_contact', phone_only=phone_only|int, source=source_filter) }}"
-     class="recycled-tab {{ 'recycled-tab-active' if category == 'no_contact' }}">
-    <span class="recycled-tab-count">{{ counts.no_contact }}</span>
-    Attempted, No Contact
-  </a>
-  <a href="{{ url_for('recycled', category='no_activity', phone_only=phone_only|int, source=source_filter) }}"
-     class="recycled-tab {{ 'recycled-tab-active' if category == 'no_activity' }}">
-    <span class="recycled-tab-count">{{ counts.no_activity }}</span>
-    Never Touched
-  </a>
-  <a href="{{ url_for('recycled', category='had_conversation', phone_only=phone_only|int, source=source_filter) }}"
-     class="recycled-tab {{ 'recycled-tab-active' if category == 'had_conversation' }}">
-    <span class="recycled-tab-count">{{ counts.had_conversation }}</span>
-    Had Conversation
-  </a>
-</div>
-
 <!-- Converted Toggle -->
 <div class="recycled-converted-toggle">
-  <a href="{{ url_for('recycled', category=category, converted='leads', phone_only=phone_only|int, source=source_filter) }}"
+  <a href="{{ url_for('recycled', converted='leads', phone_only=phone_only|int, source=source_filter) }}"
      class="converted-btn {{ 'converted-btn-active' if converted == 'leads' }}">
     &#128100; Leads Only
     <span class="converted-btn-count">{{ converted_counts.leads }}</span>
   </a>
-  <a href="{{ url_for('recycled', category=category, converted='opps', phone_only=phone_only|int, source=source_filter) }}"
+  <a href="{{ url_for('recycled', converted='opps', phone_only=phone_only|int, source=source_filter) }}"
      class="converted-btn {{ 'converted-btn-active' if converted == 'opps' }}">
     &#128200; Converted to Opp
     <span class="converted-btn-count">{{ converted_counts.opps }}</span>
   </a>
-  <a href="{{ url_for('recycled', category=category, converted='all', phone_only=phone_only|int, source=source_filter) }}"
+  <a href="{{ url_for('recycled', converted='all', phone_only=phone_only|int, source=source_filter) }}"
      class="converted-btn {{ 'converted-btn-active' if converted == 'all' }}">
     All
     <span class="converted-btn-count">{{ converted_counts.all }}</span>
@@ -64,7 +45,6 @@
 <!-- Filters -->
 <div class="recycled-filters">
   <form method="get" action="{{ url_for('recycled') }}" class="recycled-filter-form">
-    <input type="hidden" name="category" value="{{ category }}">
     <input type="hidden" name="converted" value="{{ converted }}">
 
     <label class="recycled-filter-check">

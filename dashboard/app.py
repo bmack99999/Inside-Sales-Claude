@@ -733,12 +733,11 @@ def delete_callback():
 
 @app.route('/recycled')
 def recycled():
-    category      = request.args.get('category', 'no_contact')
     source_filter = request.args.get('source', '')
     phone_only    = request.args.get('phone_only', '1') == '1'
     converted     = request.args.get('converted', 'leads')  # 'leads' | 'opps' | 'all'
 
-    query = RecycledLead.query.filter_by(category=category)
+    query = RecycledLead.query
     if phone_only:
         query = query.filter(RecycledLead.phone.isnot(None),
                              RecycledLead.phone != '')
@@ -757,14 +756,8 @@ def recycled():
         if r.lead_source
     ))
 
-    counts = {
-        'no_contact':       RecycledLead.query.filter_by(category='no_contact').count(),
-        'no_activity':      RecycledLead.query.filter_by(category='no_activity').count(),
-        'had_conversation': RecycledLead.query.filter_by(category='had_conversation').count(),
-    }
-
-    # Converted vs lead counts for current category
-    base = RecycledLead.query.filter_by(category=category)
+    # Converted vs lead counts (across all categories)
+    base = RecycledLead.query
     converted_counts = {
         'leads': base.filter_by(is_converted=False).count(),
         'opps':  base.filter(RecycledLead.is_converted == True,
@@ -780,9 +773,7 @@ def recycled():
 
     return render_template('recycled.html',
         leads=leads,
-        counts=counts,
         converted_counts=converted_counts,
-        category=category,
         converted=converted,
         source_filter=source_filter,
         phone_only=phone_only,
