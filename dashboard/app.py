@@ -720,6 +720,20 @@ def log_callback_call():
     return redirect(url_for('dashboard'))
 
 
+@app.route('/edit_callback', methods=['POST'])
+def edit_callback():
+    cb = Callback.query.get(request.form.get('cb_id'))
+    if cb:
+        cb.name         = request.form.get('name', '').strip() or cb.name
+        cb.contact_name = request.form.get('contact_name', '').strip() or None
+        cb.phone        = request.form.get('phone', '').strip() or None
+        cb.sf_url       = request.form.get('sf_url', '').strip() or None
+        cb.task_due     = request.form.get('task_due', '').strip() or None
+        cb.notes        = request.form.get('notes', '').strip() or None
+        db.session.commit()
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/delete_callback', methods=['POST'])
 def delete_callback():
     cb = Callback.query.get(request.form.get('cb_id'))

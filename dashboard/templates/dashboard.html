@@ -131,6 +131,10 @@
         {% endif %}
         <div class="dp-cb-actions">
           {% if cb.sf_url %}<a href="{{ cb.sf_url }}" target="_blank" class="cb-sf-link">&#128279; SF</a>{% endif %}
+          <button class="card-btn card-btn-edit"
+                  onclick="openEditCallback({{ cb | tojson }})">
+            &#9998; Edit
+          </button>
           <button class="card-btn card-btn-call"
                   onclick="openCallbackLog('{{ cb.id }}', '{{ (cb.name or '') | replace("'","") }}', '{{ cb.task_due or "" }}', {{ 'true' if cb.do_not_call else 'false' }})">
             &#128222; Log Call
@@ -358,6 +362,54 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal('add-callback-modal')">Cancel</button>
         <button type="submit" class="btn btn-primary">Add Callback</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── EDIT CALLBACK MODAL ── -->
+<div id="edit-callback-modal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Edit Callback</span>
+      <button class="modal-close" onclick="closeModal('edit-callback-modal')">&times;</button>
+    </div>
+    <form action="{{ url_for('edit_callback') }}" method="post" class="modal-form">
+      <input type="hidden" name="cb_id" id="edit-cb-id">
+
+      <div class="form-row">
+        <label>Business / Opp Name *</label>
+        <input type="text" id="edit-cb-name" name="name" required>
+      </div>
+
+      <div class="form-row">
+        <label>Contact Name</label>
+        <input type="text" id="edit-cb-contact" name="contact_name">
+      </div>
+
+      <div class="form-row">
+        <label>Phone</label>
+        <input type="tel" id="edit-cb-phone" name="phone">
+      </div>
+
+      <div class="form-row">
+        <label>Salesforce URL</label>
+        <input type="url" id="edit-cb-sfurl" name="sf_url">
+      </div>
+
+      <div class="form-row">
+        <label>Follow-Up Date</label>
+        <input type="date" id="edit-cb-due" name="task_due">
+      </div>
+
+      <div class="form-row">
+        <label>Notes</label>
+        <textarea id="edit-cb-notes" name="notes" rows="3"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('edit-callback-modal')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
       </div>
     </form>
   </div>
@@ -749,6 +801,18 @@ function openCallbackLog(cbId, cbName, currentDue, isDnc) {
     dueFld.value = tomorrow.toISOString().split('T')[0];
   }
   openModal('callback-log-modal');
+}
+
+// ── Edit Callback ──
+function openEditCallback(cb) {
+  document.getElementById('edit-cb-id').value      = cb.id || '';
+  document.getElementById('edit-cb-name').value    = cb.name || '';
+  document.getElementById('edit-cb-contact').value = cb.contact_name || '';
+  document.getElementById('edit-cb-phone').value   = cb.phone || '';
+  document.getElementById('edit-cb-sfurl').value   = cb.sf_url || '';
+  document.getElementById('edit-cb-due').value     = cb.task_due || '';
+  document.getElementById('edit-cb-notes').value   = cb.notes || '';
+  openModal('edit-callback-modal');
 }
 
 // ── Add Record type toggle ──
