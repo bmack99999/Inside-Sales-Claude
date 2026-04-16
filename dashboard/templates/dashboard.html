@@ -132,7 +132,8 @@
         <div class="dp-cb-actions">
           {% if cb.sf_url %}<a href="{{ cb.sf_url }}" target="_blank" class="cb-sf-link">&#128279; SF</a>{% endif %}
           <button class="card-btn card-btn-edit"
-                  onclick="openEditCallback({{ cb | tojson }})">
+                  data-cb='{{ cb | tojson }}'
+                  onclick="openEditCallback(JSON.parse(this.dataset.cb))">
             &#9998; Edit
           </button>
           <button class="card-btn card-btn-call"
