@@ -1165,6 +1165,20 @@ body {
   color: var(--text);
   font-size: 12px;
   flex: 1;
+}
+.dp-cb-name-link {
+  text-decoration: none;
+  color: var(--navy-light);
+}
+.dp-cb-name-link:hover {
+  text-decoration: underline;
+  color: var(--navy);
+}
+.dp-cb-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

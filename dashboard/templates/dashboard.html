@@ -110,7 +110,11 @@
       <div class="dp-cb-card {{ 'callback-dnc' if cb.do_not_call else '' }} {{ 'callback-overdue' if cb._task_overdue and not cb.do_not_call else '' }}">
         <div class="dp-cb-top">
           <span class="cb-badge cb-badge-age {{ 'cb-age-ready' if cb._days_since_added >= 3 else ('cb-age-soon' if cb._days_since_added >= 2 else 'cb-age-new') }}">{{ cb._days_since_added }}d</span>
-          <span class="dp-cb-name">{{ cb.name or 'Unknown' }}</span>
+          {% if cb.sf_url %}
+            <a href="{{ cb.sf_url }}" target="_blank" class="dp-cb-name dp-cb-name-link">{{ cb.name or 'Unknown' }}</a>
+          {% else %}
+            <span class="dp-cb-name">{{ cb.name or 'Unknown' }}</span>
+          {% endif %}
           {% if cb.task_due %}
             <span class="dp-cb-due {{ 'text-overdue' if cb._task_overdue else ('text-today' if cb._task_due_today else '') }}">
               {{ cb.task_due }}{% if cb._task_overdue %} ⚠{% endif %}
