@@ -144,6 +144,7 @@ class RecycledLead(db.Model):
     attempt_count      = db.Column(db.Integer, default=0)
     last_attempt       = db.Column(db.Text)
     attempt_summary    = db.Column(db.Text)
+    notes_snippet      = db.Column(db.Text)
     extracted_at       = db.Column(db.Text)
     color              = db.Column(db.Text)  # yellow | red | blue | light_green | dark_green | purple
     timezone           = db.Column(db.Text)  # ET | CT | MT | PT | AK | HI

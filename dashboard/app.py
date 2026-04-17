@@ -65,8 +65,9 @@ with app.app_context():
         except Exception:
             return False
     _migrations = [
-        ("recycled_leads", "color",        "TEXT"),
-        ("recycled_leads", "timezone",     "TEXT"),
+        ("recycled_leads", "color",         "TEXT"),
+        ("recycled_leads", "timezone",      "TEXT"),
+        ("recycled_leads", "notes_snippet", "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
         ("sf_task_data",   "week_start",   "TEXT"),
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
