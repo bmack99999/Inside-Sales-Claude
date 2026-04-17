@@ -120,6 +120,12 @@ def extract_leads():
             if a.get("TaskSubtype") == "Call" or (a.get("Subject") or "").lower().startswith("call"):
                 last_call_notes = a.get("Description")
                 break
+        # Fall back to any activity description if no call notes
+        if not last_call_notes:
+            for a in activities:
+                if a.get("Description"):
+                    last_call_notes = a.get("Description")
+                    break
 
         created = r.get("Lead_Created_Date__c") or r.get("CreatedDate")
         lead_age = days_between(created) if created else None
@@ -225,6 +231,12 @@ def extract_opportunities():
             if a.get("TaskSubtype") == "Call" or (a.get("Subject") or "").lower().startswith("call"):
                 last_call_notes = a.get("Description")
                 break
+        # Fall back to any activity description if no call notes
+        if not last_call_notes:
+            for a in activities:
+                if a.get("Description"):
+                    last_call_notes = a.get("Description")
+                    break
 
         days_in_stage = days_between(r.get("LastStageChangeDate")) or 0
 
@@ -244,7 +256,7 @@ def extract_opportunities():
             "next_task_due": next_task_due,
             "days_in_stage": days_in_stage,
             "probability": r.get("Probability") or 0,
-            "notes_snippet": (last_call_notes or "")[:100] or None,
+            "notes_snippet": (last_call_notes or r.get("Description") or "")[:100] or None,
             "last_call_notes": last_call_notes,
             "activity_summary": activity_summary,
             "next_agreed_step": None,
