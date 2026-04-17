@@ -173,7 +173,7 @@ def main():
     print("\n[1/3] Querying recycled leads...")
     source_list = "','".join(LEAD_SOURCES)
     leads_raw = run_soql(
-        f"SELECT Id, Name, Company, Phone, Email, Status, LeadSource, "
+        f"SELECT Id, Name, Company, Phone, Email, Status, LeadSource, Description, "
         f"Lead_Created_Date__c, LastActivityDate, IsConverted, ConvertedOpportunityId "
         f"FROM Lead "
         f"WHERE LeadSource IN ('{source_list}') "
@@ -199,10 +199,10 @@ def main():
             id_list = "','".join(batch)
             opps = run_soql(
                 f"SELECT Id, StageName FROM Opportunity "
-                f"WHERE Id IN ('{id_list}') AND StageName IN ('Closed Lost', 'Closed Won')"
+                f"WHERE Id IN ('{id_list}') AND StageName IN ('Closed Lost', 'Closed Won', 'Underwriting Review')"
             )
             excluded_opp_ids.update(o['Id'] for o in opps)
-        print(f"  Excluding {len(excluded_opp_ids)} Closed Lost/Won opportunities")
+        print(f"  Excluding {len(excluded_opp_ids)} Closed Lost/Won/Underwriting opportunities")
 
     leads_raw = [l for l in leads_raw
                  if l.get('ConvertedOpportunityId') not in excluded_opp_ids]
@@ -364,6 +364,15 @@ def main():
             summaries.append(entry)
         attempt_summary = ' | '.join(summaries) if summaries else 'No activity'
 
+        # notes_snippet: most recent activity description, or lead Description field
+        notes_snippet = None
+        for t in all_lead_activities:
+            if t.get('Description') and t['Description'].lower().strip() not in ('na', 'n/a', ''):
+                notes_snippet = t['Description'][:100]
+                break
+        if not notes_snippet and lead.get('Description'):
+            notes_snippet = lead['Description'][:100]
+
         output_leads.append({
             'id': lid,
             'name': lead.get('Name'),
@@ -373,13 +382,14 @@ def main():
             'status': lead.get('Status'),
             'lead_source': lead.get('LeadSource'),
             'lead_created': lead.get('Lead_Created_Date__c'),
-            'last_activity_date': lead.get('LastActivityDate'),
+            'last_activity_date': last_attempt or lead.get('LastActivityDate'),
             'is_converted': lead.get('IsConverted', False),
             'converted_opp_id': lead.get('ConvertedOpportunityId'),
             'category': category,
             'attempt_count': attempt_count,
             'last_attempt': last_attempt,
             'attempt_summary': attempt_summary,
+            'notes_snippet': notes_snippet,
             'timezone': get_timezone(lead.get('Phone')),
         })
 
