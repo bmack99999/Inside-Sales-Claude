@@ -99,8 +99,8 @@
         <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow">▾</span></th>
         <th class="sortable" data-col="activity"  onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="attempts"  onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
-        <th>Next Task</th>
         <th>Notes</th>
+        <th>Activities</th>
       </tr>
     </thead>
     <tbody>
@@ -135,15 +135,14 @@
         <td>{{ l.lead_age_days or 0 }}d</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
         <td>{{ l.call_attempts or 0 }}</td>
-        <td class="ml-next-task">
-          {% if l.next_task %}
-            <span class="ml-task-label">{{ l.next_task[:35] }}</span>
-            {% if l.next_task_due %}<span class="ml-task-due">{{ l.next_task_due }}</span>{% endif %}
+        <td class="recycled-notes-cell">
+          {% if l.notes_snippet %}
+            <span class="recycled-notes" data-tooltip="{{ l.notes_snippet }}">{{ l.notes_snippet[:50] }}{% if l.notes_snippet|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
         <td class="recycled-notes-cell">
           {% if l.activity_summary %}
-            <span class="recycled-notes" title="{{ l.activity_summary }}">{{ l.activity_summary[:70] }}{% if l.activity_summary|length > 70 %}…{% endif %}</span>
+            <span class="recycled-notes" data-tooltip="{{ l.activity_summary }}">{{ l.activity_summary[:50] }}{% if l.activity_summary|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
       </tr>
@@ -175,8 +174,8 @@
         <th class="sortable" data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="days"     onclick="sortTable('days')">Days in Stage <span class="sort-arrow">▾</span></th>
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
-        <th>Next Step</th>
         <th>Notes</th>
+        <th>Activities</th>
       </tr>
     </thead>
     <tbody>
@@ -212,15 +211,14 @@
         <td>{{ o.close_date or '—' }}</td>
         <td class="{% if o.days_in_stage and o.days_in_stage > 14 %}ml-stale{% endif %}">{{ o.days_in_stage or 0 }}d</td>
         <td>{{ o.last_activity_date or 'Never' }}</td>
-        <td class="ml-next-task">
-          {% if o.next_step %}
-            <span class="ml-task-label">{{ o.next_step[:35] }}</span>
-            {% if o.next_task_due %}<span class="ml-task-due">{{ o.next_task_due }}</span>{% endif %}
+        <td class="recycled-notes-cell">
+          {% if o.notes_snippet %}
+            <span class="recycled-notes" data-tooltip="{{ o.notes_snippet }}">{{ o.notes_snippet[:50] }}{% if o.notes_snippet|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
         <td class="recycled-notes-cell">
           {% if o.activity_summary %}
-            <span class="recycled-notes" title="{{ o.activity_summary }}">{{ o.activity_summary[:70] }}{% if o.activity_summary|length > 70 %}…{% endif %}</span>
+            <span class="recycled-notes" data-tooltip="{{ o.activity_summary }}">{{ o.activity_summary[:50] }}{% if o.activity_summary|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
       </tr>

@@ -95,6 +95,7 @@
         <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
         <th>TZ</th>
         <th class="notes-th">Notes</th>
+        <th class="notes-th">Activities</th>
       </tr>
     </thead>
     <tbody>
@@ -130,8 +131,13 @@
         <td>{{ l.attempt_count or 0 }}</td>
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td class="recycled-notes-cell">
+          {% if l.notes_snippet %}
+            <span class="recycled-notes" data-tooltip="{{ l.notes_snippet }}">{{ l.notes_snippet[:50] }}{% if l.notes_snippet|length > 50 %}…{% endif %}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="recycled-notes-cell">
           {% if l.attempt_summary and l.attempt_summary != 'No activity' %}
-            <span class="recycled-notes" title="{{ l.attempt_summary }}">{{ l.attempt_summary[:60] }}{{ '...' if l.attempt_summary|length > 60 }}</span>
+            <span class="recycled-notes" data-tooltip="{{ l.attempt_summary }}">{{ l.attempt_summary[:50] }}{% if l.attempt_summary|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
       </tr>

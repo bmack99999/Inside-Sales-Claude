@@ -876,7 +876,24 @@ body {
   white-space: nowrap;
 }
 .recycled-notes-cell { max-width: 220px; }
-.recycled-notes { font-size: 12px; color: var(--text-light); }
+.recycled-notes { font-size: 12px; color: var(--text-light); cursor: default; }
+.recycled-notes[data-tooltip] { border-bottom: 1px dotted var(--border); cursor: help; }
+.notes-tooltip-box {
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.13);
+  padding: 12px 16px;
+  max-width: 420px;
+  min-width: 180px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
 .recycled-converted-toggle {
   display: flex; gap: 8px; margin-bottom: 12px;
 }

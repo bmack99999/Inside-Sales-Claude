@@ -41,5 +41,46 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='charts.js') }}"></script>
   {% block scripts %}{% endblock %}
+
+  <!-- Global hover tooltip for notes/activities cells -->
+  <div id="notes-tooltip" class="notes-tooltip-box" style="display:none;position:absolute;"></div>
+  <script>
+  (function() {
+    const tt = document.getElementById('notes-tooltip');
+    let currentEl = null;
+
+    document.addEventListener('mouseover', function(e) {
+      const el = e.target.closest('[data-tooltip]');
+      if (!el || !el.dataset.tooltip) { hide(); return; }
+      currentEl = el;
+      tt.textContent = el.dataset.tooltip;
+      tt.style.display = 'block';
+      position(e);
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (tt.style.display === 'none') return;
+      position(e);
+    });
+
+    document.addEventListener('mouseout', function(e) {
+      if (currentEl && !currentEl.contains(e.relatedTarget)) hide();
+    });
+
+    function hide() { tt.style.display = 'none'; currentEl = null; }
+
+    function position(e) {
+      const pad = 14, vw = window.innerWidth, vh = window.innerHeight;
+      let x = e.clientX + pad, y = e.clientY + pad;
+      tt.style.left = '-9999px'; tt.style.top = '-9999px'; // measure off-screen
+      tt.style.display = 'block';
+      const w = tt.offsetWidth, h = tt.offsetHeight;
+      if (x + w > vw - 8) x = e.clientX - w - pad;
+      if (y + h > vh - 8) y = e.clientY - h - pad;
+      tt.style.left = (x + window.scrollX) + 'px';
+      tt.style.top  = (y + window.scrollY) + 'px';
+    }
+  })();
+  </script>
 </body>
 </html>
