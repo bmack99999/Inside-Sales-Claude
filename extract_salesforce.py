@@ -85,6 +85,9 @@ def extract_leads():
     # Get recent activities (completed tasks = call logs, emails, etc.)
     activities_by_lead = get_recent_activities(lead_ids, "WhoId")
 
+    # Get ContentNotes for leads
+    content_notes_by_lead = get_content_notes(lead_ids)
+
     now = datetime.now().isoformat()
     leads = []
     for r in leads_raw:
@@ -147,7 +150,7 @@ def extract_leads():
             "call_attempts": call_attempts,
             "city": r.get("City"),
             "state": r.get("State"),
-            "notes_snippet": (last_call_notes or "")[:100] or None,
+            "notes_snippet": (last_call_notes or content_notes_by_lead.get(lid) or "")[:100] or None,
             "last_call_notes": last_call_notes,
             "activity_summary": activity_summary,
             "next_agreed_step": None,
@@ -201,6 +204,9 @@ def extract_opportunities():
     print("\n[4/4] Querying opportunity tasks...")
     tasks_by_opp = get_tasks_for_records(opp_ids, "WhatId")
     activities_by_opp = get_recent_activities(opp_ids, "WhatId")
+
+    # Get ContentNotes for opps
+    content_notes_by_opp = get_content_notes(opp_ids)
 
     now = datetime.now().isoformat()
     opps = []
@@ -256,7 +262,7 @@ def extract_opportunities():
             "next_task_due": next_task_due,
             "days_in_stage": days_in_stage,
             "probability": r.get("Probability") or 0,
-            "notes_snippet": (last_call_notes or r.get("Description") or "")[:100] or None,
+            "notes_snippet": (last_call_notes or content_notes_by_opp.get(oid) or r.get("Description") or "")[:100] or None,
             "last_call_notes": last_call_notes,
             "activity_summary": activity_summary,
             "next_agreed_step": None,
@@ -307,6 +313,38 @@ def get_recent_activities(record_ids, id_field):
         if parent:
             grouped.setdefault(parent, []).append(a)
     return grouped
+
+
+def get_content_notes(record_ids):
+    """Get most recent ContentNote TextPreview grouped by record ID."""
+    if not record_ids:
+        return {}
+    batch_size = 200
+    notes_by_id = {}
+    for i in range(0, len(record_ids), batch_size):
+        batch = record_ids[i:i + batch_size]
+        id_list = "','".join(batch)
+        doc_links = run_soql(
+            f"SELECT ContentDocumentId, LinkedEntityId "
+            f"FROM ContentDocumentLink WHERE LinkedEntityId IN ('{id_list}')"
+        )
+        if not doc_links:
+            continue
+        doc_ids = list(set(d['ContentDocumentId'] for d in doc_links))
+        entity_map = {d['ContentDocumentId']: d['LinkedEntityId'] for d in doc_links}
+        for j in range(0, len(doc_ids), batch_size):
+            doc_batch = doc_ids[j:j + batch_size]
+            doc_id_list = "','".join(doc_batch)
+            notes = run_soql(
+                f"SELECT Id, TextPreview, CreatedDate "
+                f"FROM ContentNote WHERE Id IN ('{doc_id_list}') "
+                f"ORDER BY CreatedDate DESC"
+            )
+            for note in notes:
+                eid = entity_map.get(note['Id'])
+                if eid and eid not in notes_by_id and note.get('TextPreview'):
+                    notes_by_id[eid] = note['TextPreview']
+    return notes_by_id
 
 
 def get_last_activity_type(activities):
