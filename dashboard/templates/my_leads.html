@@ -96,7 +96,8 @@
         <th>TZ</th>
         <th>Source</th>
         <th>Status</th>
-        <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="activity"  onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="attempts"  onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
         <th>Notes</th>
@@ -109,7 +110,8 @@
           data-search="{{ (l.name or '')|lower }} {{ (l.company or '')|lower }} {{ (l.phone or '')|lower }}"
           data-activity="{{ l.last_activity_date or '' }}"
           data-age="{{ l.lead_age_days or 0 }}"
-          data-attempts="{{ l.call_attempts or 0 }}">
+          data-attempts="{{ l.call_attempts or 0 }}"
+          data-score="{{ l.score or 0 }}">
         <td class="color-cell">
           <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
                data-sf-id="{{ l.id }}"
@@ -121,6 +123,7 @@
                data-record-email="{{ l.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
+        <td class="score-cell">{{ l.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ l.sf_url }}" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
         </td>
@@ -171,8 +174,9 @@
         <th>Phone</th>
         <th>TZ</th>
         <th>Stage</th>
+        <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
         <th class="sortable" data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th>Notes</th>
         <th>Activities</th>
@@ -185,7 +189,8 @@
           data-activity="{{ o.last_activity_date or '' }}"
           data-close="{{ o.close_date or '' }}"
           data-created="{{ o.created_date or '' }}"
-          data-attempts="0">
+          data-attempts="0"
+          data-score="{{ o.score or 0 }}">
         <td class="color-cell">
           <div class="color-trigger {% if o.color %}cp-{{ o.color }}{% endif %}"
                data-sf-id="{{ o.id }}"
@@ -197,6 +202,7 @@
                data-record-email="{{ o.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
+        <td class="score-cell">{{ o.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ o.sf_url }}" target="_blank" class="recycled-name-link">{{ o.name or '—' }}</a>
         </td>
@@ -428,7 +434,7 @@ function clearDates() {
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────────────
-let currentSort = '{{ "age" if tab == "leads" else "days" }}';
+let currentSort = 'score';
 let sortAsc = false;
 
 function sortTable(col) {
@@ -443,7 +449,7 @@ function sortTable(col) {
   rows.sort((a, b) => {
     let va = a.dataset[col] || '';
     let vb = b.dataset[col] || '';
-    if (['age','attempts','days'].includes(col)) { va = parseInt(va)||0; vb = parseInt(vb)||0; }
+    if (['age','attempts','days','score'].includes(col)) { va = parseInt(va)||0; vb = parseInt(vb)||0; }
     if (va === '' && vb === '') return 0;
     if (va === '') return 1;
     if (vb === '') return -1;

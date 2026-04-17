@@ -1553,3 +1553,82 @@ body {
 }
 .et-save-btn:hover { background: var(--navy-light); }
 .et-save-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Morning Briefing ───────────────────────────────────────────────────────── */
+.briefing-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.briefing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.briefing-title {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-light);
+}
+.briefing-toggle {
+  font-size: 11px;
+  color: var(--text-light);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: transform .2s;
+}
+.briefing-collapsed .briefing-body { display: none; }
+.briefing-collapsed .briefing-toggle { transform: rotate(180deg); }
+.briefing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.briefing-section { min-width: 0; }
+.briefing-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-light);
+  margin-bottom: 10px;
+}
+.briefing-kpis { display: flex; flex-wrap: wrap; gap: 16px 20px; }
+.bkpi { display: flex; flex-direction: column; min-width: 52px; }
+.bkpi-val { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.bkpi-lbl { font-size: 10px; text-transform: uppercase; color: var(--text-light); letter-spacing: .05em; margin-top: 2px; }
+.briefing-empty { font-size: 12px; color: var(--text-light); }
+
+/* Team standings */
+.team-rank-list { display: flex; flex-direction: column; gap: 3px; }
+.team-rank-row {
+  display: grid;
+  grid-template-columns: 28px 160px 28px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.team-rank-me {
+  background: rgba(27,58,107,.07);
+  font-weight: 700;
+}
+.trr-rank  { color: var(--text-light); font-size: 11px; }
+.trr-total { text-align: right; font-weight: 600; }
+.trr-rate  { text-align: right; font-size: 11px; color: var(--text-light); }
+.trr-bar-wrap { background: var(--border); border-radius: 3px; height: 6px; overflow: hidden; }
+.trr-bar { background: var(--navy); height: 6px; border-radius: 3px; transition: width .3s; }
+.team-rank-me .trr-bar { background: var(--navy-light); }
+
+/* Score column */
+.score-cell { font-weight: 700; font-size: 13px; text-align: center; width: 52px; }

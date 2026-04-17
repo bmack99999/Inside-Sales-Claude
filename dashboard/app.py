@@ -137,66 +137,68 @@ def add_skipped_today(record_id):
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
+_POSITIVE_SIGNALS = (
+    'interested', 'callback', 'demo', 'meeting', 'pricing',
+    'quote', 'scheduled', 'wants', 'proposal', 'ready', 'signed',
+    'moving forward', 'send over', 'follow up',
+)
+
 def score_record(record):
+    """Score a lead or opp 1-100 for call priority. Higher = call sooner."""
     score = 0
 
+    # Activity recency (max 35) — prime window is 4-7 days after last contact
     age = days_since(record.get('last_activity_date'))
-    if age <= 1:
-        score += 35
-    elif age <= 3:
-        score += 25
-    elif age <= 7:
-        score += 15
-    elif age <= 14:
-        score += 8
+    if age == 9999:   score += 20   # never contacted — needs first touch
+    elif age <= 1:    score += 8    # just talked — give it a day
+    elif age <= 3:    score += 22   # 2-3 days — good time
+    elif age <= 7:    score += 35   # 4-7 days — PRIME window
+    elif age <= 14:   score += 22   # 8-14 days — still warm
+    elif age <= 21:   score += 10   # 15-21 days — cooling
+    elif age <= 30:   score += 4    # 22-30 days — cold
+    # 30+ days: 0
 
+    # Open / overdue task (max 30)
     due_in = days_until(record.get('next_task_due'))
-    if due_in < 0:
-        score += 28
-    elif due_in == 0:
-        score += 30
-    elif due_in == 1:
-        score += 20
+    if due_in <= 0:   score += 30   # overdue or due today
+    elif due_in == 1: score += 20   # due tomorrow
+    elif due_in <= 7: score += 10   # due this week
 
+    # Type-specific factors (max 30 for leads, 25 for opps)
     rec_type = record.get('type', 'lead')
-    if rec_type == 'opportunity':
-        stage = (record.get('stage') or '').lower()
-        if 'application' in stage:
-            score += 20
-        elif 'proposal' in stage:
-            score += 16
-        elif 'demo' in stage:
-            score += 14
-        elif 'closed won' in stage:
-            score += 5
-    else:
-        status = (record.get('status') or '').lower()
-        if 'connected' in status:
-            score += 15
-        elif 'nurturing' in status:
-            score += 10
-        elif 'attempted' in status:
-            score += 8
-        elif 'new' in status:
-            score += 5
-
-    attempts = record.get('call_attempts', 0) or 0
-    if 1 <= attempts <= 3 and days_since(record.get('last_activity_date')) <= 7:
-        score += 10
-
     if rec_type == 'lead':
         status = (record.get('status') or '').lower()
-        active_statuses = ('new', 'working', 'attempted', 'connected', 'nurturing')
-        if any(s in status for s in active_statuses):
-            age = days_since(record.get('last_activity_date'))
-            if age >= 21:
-                score -= 15
-            elif age >= 14:
-                score -= 10
-            elif age >= 7:
-                score -= 5
+        if any(s in status for s in ('working', 'qualified')):
+            score += 20
+        elif 'new' in status:
+            score += 12
+        else:
+            score += 5
+        attempts = record.get('call_attempts', 0) or 0
+        if 1 <= attempts <= 5:    score += 10
+        elif attempts == 0:       score += 7
+        elif attempts <= 10:      score += 4
+        # 11+ attempts: 0
+    else:
+        stage = (record.get('stage') or '').lower()
+        if any(s in stage for s in ('proposal', 'analysis', 'demo')):
+            score += 25
+        elif 'conversation' in stage:
+            score += 18
+        else:
+            score += 8
+        dis = record.get('days_in_stage', 0) or 0
+        if dis > 30: score -= 8
 
-    return max(0, score)
+    # Positive signals in notes (max 5)
+    notes = (
+        (record.get('activity_summary') or '') + ' ' +
+        (record.get('notes_snippet') or '')
+    ).lower()
+    if any(sig in notes for sig in _POSITIVE_SIGNALS):
+        score += 5
+
+    return max(1, min(100, score))
 
 
 def badge_tier(score):
@@ -278,19 +280,48 @@ def dashboard():
     # Build enriched leads/opps for the My Leads table embedded on this page
     color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
     all_leads = []
-    for l in Lead.query.order_by(Lead.last_activity_date.asc().nullsfirst()).all():
+    for l in Lead.query.all():
         d = l.to_dict()
-        d['color']  = color_map.get(l.id)
+        d['color']   = color_map.get(l.id)
         d['timezone'] = get_phone_tz(l.phone)
-        d['sf_url'] = f"{SF_BASE}/lightning/r/Lead/{l.id}/view"
+        d['sf_url']  = f"{SF_BASE}/lightning/r/Lead/{l.id}/view"
+        d['type']    = 'lead'
+        d['score']   = score_record(d)
         all_leads.append(d)
+    all_leads.sort(key=lambda x: x['score'], reverse=True)
+
     all_opps = []
-    for o in Opportunity.query.order_by(Opportunity.last_activity_date.asc().nullsfirst()).all():
+    for o in Opportunity.query.all():
         d = o.to_dict()
-        d['color']  = color_map.get(o.id)
+        d['color']   = color_map.get(o.id)
         d['timezone'] = get_phone_tz(o.phone)
-        d['sf_url'] = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
+        d['sf_url']  = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
+        d['type']    = 'opportunity'
+        d['score']   = score_record(d)
         all_opps.append(d)
+    all_opps.sort(key=lambda x: x['score'], reverse=True)
+
+    # Briefing stats
+    today_iso = date.today().isoformat()
+    new_leads         = [l for l in all_leads if (l.get('lead_age_days') or 999) <= 1]
+    callbacks_today   = [c for c in callbacks if c.get('task_due') == today_iso]
+    overdue_followups = [r for r in all_leads + all_opps
+                         if days_since(r.get('last_activity_date')) >= 14]
+    hot_count         = sum(1 for r in all_leads + all_opps if r['score'] >= 65)
+
+    # Personal KPIs + team standings from TeamMetrics
+    my_stats   = None
+    team_reps  = []
+    team_max   = 1
+    tm = TeamMetrics.query.order_by(TeamMetrics.id.desc()).first()
+    if tm and tm.reps:
+        team_reps = tm.reps
+        for rep in team_reps:
+            if rep.get('is_me'):
+                my_stats = rep
+            total = (rep.get('won', 0) or 0) + (rep.get('uw', 0) or 0)
+            if total > team_max:
+                team_max = total
 
     return render_template('dashboard.html',
         hot=hot, warm=warm, cool=cool, cold=cold,
@@ -303,6 +334,14 @@ def dashboard():
         all_leads=all_leads,
         all_opps=all_opps,
         sf_base=SF_BASE,
+        new_leads=new_leads,
+        callbacks_today=callbacks_today,
+        overdue_followups=overdue_followups,
+        hot_count=hot_count,
+        my_stats=my_stats,
+        team_reps=team_reps,
+        team_max=team_max,
+        tm_refreshed_at=tm.refreshed_at if tm else None,
     )
 
 
@@ -332,7 +371,10 @@ def my_leads():
         d['color']    = color_map.get(l.id)
         d['timezone'] = get_phone_tz(l.phone)
         d['sf_url']   = f"{SF_BASE}/lightning/r/Lead/{l.id}/view"
+        d['type']     = 'lead'
+        d['score']    = score_record(d)
         leads.append(d)
+    leads.sort(key=lambda x: x['score'], reverse=True)
 
     lead_sources = sorted(set(l.lead_source for l in Lead.query.all() if l.lead_source))
 
@@ -350,7 +392,10 @@ def my_leads():
         d['color']    = color_map.get(o.id)
         d['timezone'] = get_phone_tz(o.phone)
         d['sf_url']   = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
+        d['type']     = 'opportunity'
+        d['score']    = score_record(d)
         opps.append(d)
+    opps.sort(key=lambda x: x['score'], reverse=True)
 
     opp_stages = sorted(set(o.stage for o in Opportunity.query.all() if o.stage))
 
