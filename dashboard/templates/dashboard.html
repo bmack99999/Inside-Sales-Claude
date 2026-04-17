@@ -37,67 +37,6 @@
   </div>
 </div>
 
-<!-- ── Morning Briefing ── -->
-<div class="briefing-card">
-  <div class="briefing-header">
-    <span class="briefing-title">Morning Briefing</span>
-    <button class="briefing-toggle" onclick="this.closest('.briefing-card').classList.toggle('briefing-collapsed')">▲</button>
-  </div>
-  <div class="briefing-body">
-    <div class="briefing-grid">
-
-      <!-- Personal KPIs -->
-      <div class="briefing-section">
-        <div class="briefing-section-title">My MTD Performance{% if my_stats %} — Rank #{{ my_stats.rank }}{% endif %}{% if tm_refreshed_at %} <span style="font-weight:400;text-transform:none;letter-spacing:0">· as of {{ tm_refreshed_at }}</span>{% endif %}</div>
-        {% if my_stats %}
-        <div class="briefing-kpis">
-          <div class="bkpi"><span class="bkpi-val">{{ my_stats.leads }}</span><span class="bkpi-lbl">Leads</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ my_stats.won }}W / {{ my_stats.uw }}UW</span><span class="bkpi-lbl">Won / UW</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ my_stats.won + my_stats.uw }}</span><span class="bkpi-lbl">Total</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ ((my_stats.won + my_stats.uw) / my_stats.leads * 100)|round|int if my_stats.leads else 0 }}%</span><span class="bkpi-lbl">Close Rate</span></div>
-          <div class="bkpi"><span class="bkpi-val">${{ '{:,.0f}'.format(my_stats.apv_won) }}</span><span class="bkpi-lbl">APV Won</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ my_stats.calls }}</span><span class="bkpi-lbl">Calls</span></div>
-        </div>
-        {% else %}
-        <p class="briefing-empty">Run team metrics extraction to see your stats.</p>
-        {% endif %}
-      </div>
-
-      <!-- Pipeline snapshot -->
-      <div class="briefing-section">
-        <div class="briefing-section-title">Pipeline Today</div>
-        <div class="briefing-kpis">
-          <div class="bkpi"><span class="bkpi-val">{{ all_leads|length }}</span><span class="bkpi-lbl">Leads</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ all_opps|length }}</span><span class="bkpi-lbl">Opps</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ hot_count }}</span><span class="bkpi-lbl">Hot (65+)</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ new_leads|length }}</span><span class="bkpi-lbl">New Today</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ callbacks_today|length }}</span><span class="bkpi-lbl">Callbacks Due</span></div>
-          <div class="bkpi"><span class="bkpi-val">{{ overdue_followups|length }}</span><span class="bkpi-lbl">Overdue (14d+)</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Team standings -->
-    {% if team_reps %}
-    <div class="briefing-section" style="margin-top:12px">
-      <div class="briefing-section-title">Team Standings — {{ my_stats.month if my_stats else '' }}</div>
-      <div class="team-rank-list">
-        {% for rep in team_reps %}
-        {% set total = (rep.won or 0) + (rep.uw or 0) %}
-        <div class="team-rank-row {% if rep.is_me %}team-rank-me{% endif %}">
-          <span class="trr-rank">#{{ rep.rank }}</span>
-          <span class="trr-name">{{ rep.name }}</span>
-          <span class="trr-total">{{ total }}</span>
-          <div class="trr-bar-wrap"><div class="trr-bar" style="width:{{ (total / team_max * 100)|round|int if team_max else 0 }}%"></div></div>
-          <span class="trr-rate">{{ ((rep.won or 0 + rep.uw or 0) / rep.leads * 100)|round|int if rep.leads else 0 }}%</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-  </div>
-</div>
-
 <!-- KPI Input Form -->
 <!-- ── Activity Gauges ── -->
 <div class="gauge-row">
