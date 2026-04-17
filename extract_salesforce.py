@@ -167,7 +167,7 @@ def extract_leads():
 def extract_opportunities():
     print("\n[3/4] Querying open opportunities...")
     opps_raw = run_soql(
-        "SELECT Id, Name, StageName, CloseDate, LastActivityDate, "
+        "SELECT Id, Name, StageName, CloseDate, CreatedDate, LastActivityDate, "
         "HasOverdueTask, ContactId, Probability, "
         "LastStageChangeDate, Description, Next_service_provider_task__c "
         f"FROM Opportunity WHERE OwnerId = '{USER_ID}' "
@@ -255,6 +255,7 @@ def extract_opportunities():
             "phone": contact.get("Phone") or contact.get("MobilePhone"),
             "stage": r.get("StageName"),
             "amount": 0,
+            "created_date": (r.get("CreatedDate") or "")[:10] or None,
             "close_date": r.get("CloseDate"),
             "last_activity_date": r.get("LastActivityDate"),
             "last_activity_type": get_last_activity_type(activities),

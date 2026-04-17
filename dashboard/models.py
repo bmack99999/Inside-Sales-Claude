@@ -71,6 +71,7 @@ class Opportunity(db.Model):
     last_activity_type = db.Column(db.Text)
     next_step          = db.Column(db.Text)
     next_task_due      = db.Column(db.Text)
+    created_date       = db.Column(db.Text)
     days_in_stage      = db.Column(db.Integer, default=0)
     probability        = db.Column(db.Numeric, default=0)
     notes_snippet      = db.Column(db.Text)

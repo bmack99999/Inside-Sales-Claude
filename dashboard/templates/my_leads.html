@@ -172,7 +172,7 @@
         <th>TZ</th>
         <th>Stage</th>
         <th class="sortable" data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="days"     onclick="sortTable('days')">Days in Stage <span class="sort-arrow">▾</span></th>
+        <th class="sortable" data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow">▾</span></th>
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th>Notes</th>
         <th>Activities</th>
@@ -184,7 +184,7 @@
           data-search="{{ (o.name or '')|lower }} {{ (o.account_name or '')|lower }} {{ (o.contact_name or '')|lower }} {{ (o.phone or '')|lower }}"
           data-activity="{{ o.last_activity_date or '' }}"
           data-close="{{ o.close_date or '' }}"
-          data-days="{{ o.days_in_stage or 0 }}"
+          data-created="{{ o.created_date or '' }}"
           data-attempts="0">
         <td class="color-cell">
           <div class="color-trigger {% if o.color %}cp-{{ o.color }}{% endif %}"
@@ -209,7 +209,7 @@
         <td>{% if o.timezone %}<span class="tz-badge tz-{{ o.timezone }}">{{ o.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
         <td>{{ o.close_date or '—' }}</td>
-        <td class="{% if o.days_in_stage and o.days_in_stage > 14 %}ml-stale{% endif %}">{{ o.days_in_stage or 0 }}d</td>
+        <td>{{ o.created_date or '—' }}</td>
         <td>{{ o.last_activity_date or 'Never' }}</td>
         <td class="recycled-notes-cell">
           {% if o.notes_snippet %}
