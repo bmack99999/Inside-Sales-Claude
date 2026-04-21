@@ -268,7 +268,7 @@ def dashboard():
     cold = [r for r in all_records if r['_tier_label'] == 'COLD']
 
     callbacks = [enrich_callback(c.to_dict())
-                 for c in Callback.query.all()]
+                 for c in Callback.query.order_by(Callback.added_date.desc()).all()]
 
     log = RefreshLog.query.filter_by(
         refresh_type='salesforce').order_by(RefreshLog.id.desc()).first()
