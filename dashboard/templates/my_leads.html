@@ -93,13 +93,13 @@
         <th>Name</th>
         <th>Company</th>
         <th>Phone</th>
-        <th>TZ</th>
-        <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
-        <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="activity"  onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="attempts"  onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
-        <th>Notes</th>
-        <th>Activities</th>
+        <th class="th-tz">TZ</th>
+        <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
+        <th class="sortable th-age"   data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
+        <th class="sortable th-date"  data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th class="sortable th-calls" data-col="attempts" onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
+        <th class="th-notes">Notes</th>
+        <th class="th-acts">Activities</th>
       </tr>
     </thead>
     <tbody>
@@ -168,14 +168,14 @@
         <th>Account</th>
         <th>Contact</th>
         <th>Phone</th>
-        <th>TZ</th>
+        <th class="th-tz">TZ</th>
         <th>Stage</th>
-        <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
-        <th class="sortable" data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
-        <th>Notes</th>
-        <th>Activities</th>
+        <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
+        <th class="sortable th-date"  data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
+        <th class="sortable th-date"  data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow"></span></th>
+        <th class="sortable th-date"  data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th class="th-notes">Notes</th>
+        <th class="th-acts">Activities</th>
       </tr>
     </thead>
     <tbody>

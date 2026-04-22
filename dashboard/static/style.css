@@ -852,6 +852,15 @@ body {
 .recycled-table col.col-attempts { width: 7%; }
 .recycled-table col.col-tz       { width: 5%; }
 .recycled-table col.col-notes    { width: 19%; }
+
+/* Explicit widths on th/td for fixed-layout tables without colgroup */
+.ml-table .th-tz    { width: 48px; }
+.ml-table .th-score { width: 58px; }
+.ml-table .th-age   { width: 56px; }
+.ml-table .th-calls { width: 56px; }
+.ml-table .th-date  { width: 98px; }
+.ml-table .th-notes { width: 18%; }
+.ml-table .th-acts  { width: 18%; }
 /* Timezone badges */
 .tz-badge {
   display: inline-block; padding: 2px 6px; border-radius: 6px;
@@ -875,7 +884,7 @@ body {
   background: var(--cool-bg); color: var(--cool); font-size: 11px; font-weight: 600;
   white-space: nowrap;
 }
-.recycled-notes-cell { max-width: 320px; min-width: 260px; }
+.recycled-notes-cell { max-width: 420px; min-width: 240px; }
 .recycled-notes { font-size: 12px; color: var(--text-light); cursor: default; }
 .recycled-notes[data-tooltip] { border-bottom: 1px dotted var(--border); cursor: help; }
 .notes-tooltip-box {
