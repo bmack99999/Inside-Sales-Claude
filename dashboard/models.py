@@ -64,6 +64,7 @@ class Opportunity(db.Model):
     account_name       = db.Column(db.Text)
     contact_name       = db.Column(db.Text)
     phone              = db.Column(db.Text)
+    email              = db.Column(db.Text)
     stage              = db.Column(db.Text)
     amount             = db.Column(db.Numeric, default=0)
     close_date         = db.Column(db.Text)

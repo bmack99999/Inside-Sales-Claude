@@ -253,6 +253,7 @@ def extract_opportunities():
             "account_name": account_map.get(oid),
             "contact_name": contact.get("Name"),
             "phone": contact.get("Phone") or contact.get("MobilePhone"),
+            "email": contact.get("Email"),
             "stage": r.get("StageName"),
             "amount": 0,
             "created_date": (r.get("CreatedDate") or "")[:10] or None,

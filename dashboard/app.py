@@ -69,6 +69,7 @@ with app.app_context():
         ("recycled_leads", "timezone",      "TEXT"),
         ("recycled_leads", "notes_snippet", "TEXT"),
         ("opportunities",  "created_date",  "TEXT"),
+        ("opportunities",  "email",         "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
         ("sf_task_data",   "week_start",   "TEXT"),
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
@@ -1085,23 +1086,32 @@ def get_email_drafts_data():
             skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'empty template'})
             continue
 
-        # Look up the lead in either Lead or RecycledLead (opps have no email)
+        # Look up the record in Lead, RecycledLead, or Opportunity
         lead = Lead.query.get(q.sf_id) or RecycledLead.query.get(q.sf_id)
-        if not lead:
-            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'lead not found'})
-            continue
-        if not lead.email:
-            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'no email on lead'})
+        opp  = Opportunity.query.get(q.sf_id) if not lead else None
+
+        if lead:
+            to_email  = lead.email
+            full_name = (lead.name or '').strip()
+            company   = (lead.company or '').strip()
+        elif opp:
+            to_email  = opp.email
+            full_name = (opp.contact_name or '').strip()
+            company   = (opp.account_name or '').strip()
+        else:
+            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'record not found'})
             continue
 
-        full_name  = (lead.name or '').strip()
+        if not to_email:
+            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'no email on record'})
+            continue
+
         first_name = full_name.split()[0] if full_name else ''
-        company    = (lead.company or '').strip()
 
         drafts.append({
             'sf_id':      q.sf_id,
             'slot':       q.slot,
-            'to':         lead.email,
+            'to':         to_email,
             'first_name': first_name,
             'full_name':  full_name,
             'company':    company,
