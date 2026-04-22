@@ -123,7 +123,6 @@
                data-record-email="{{ l.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
-        <td class="score-cell">{{ l.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ l.sf_url }}" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
         </td>
@@ -135,6 +134,7 @@
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
         <td><span class="ml-status ml-status-{{ (l.status or 'other')|lower|replace(' ','_') }}">{{ l.status or '—' }}</span></td>
+        <td class="score-cell">{{ l.score or '—' }}</td>
         <td>{{ l.lead_age_days or 0 }}d</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
         <td>{{ l.call_attempts or 0 }}</td>
@@ -202,7 +202,6 @@
                data-record-email="{{ o.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
-        <td class="score-cell">{{ o.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ o.sf_url }}" target="_blank" class="recycled-name-link">{{ o.name or '—' }}</a>
         </td>
@@ -214,6 +213,7 @@
         </td>
         <td>{% if o.timezone %}<span class="tz-badge tz-{{ o.timezone }}">{{ o.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
+        <td class="score-cell">{{ o.score or '—' }}</td>
         <td>{{ o.close_date or '—' }}</td>
         <td>{{ o.created_date or '—' }}</td>
         <td>{{ o.last_activity_date or 'Never' }}</td>

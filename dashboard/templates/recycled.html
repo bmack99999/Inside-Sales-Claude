@@ -119,7 +119,6 @@
                data-record-email="{{ l.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
-        <td class="score-cell">{{ l.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ sf_base }}/lightning/r/Lead/{{ l.id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
         </td>
@@ -132,6 +131,7 @@
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
         <td><span class="ml-status ml-status-{{ (l.status or 'other')|lower|replace(' ','_') }}">{{ l.status or '—' }}</span></td>
+        <td class="score-cell">{{ l.score or '—' }}</td>
         <td>{{ l.lead_age_days if l.lead_age_days is not none else 0 }}d</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
         <td>{{ l.call_attempts or 0 }}</td>
