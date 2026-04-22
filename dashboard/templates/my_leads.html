@@ -313,7 +313,7 @@ function openEmailPicker(trigger) {
   let top  = rect.bottom + 6;
   left = Math.max(4, Math.min(left, window.innerWidth - popW - 4));
   epPopup.style.left = left + 'px';
-  epPopup.style.top  = (top + window.scrollY) + 'px';
+  epPopup.style.top  = top + 'px';
 
   // Highlight current slot if active
   const currentSlot = emailQueue[trigger.dataset.sfId];
