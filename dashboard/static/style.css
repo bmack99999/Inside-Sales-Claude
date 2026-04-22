@@ -875,7 +875,7 @@ body {
   background: var(--cool-bg); color: var(--cool); font-size: 11px; font-weight: 600;
   white-space: nowrap;
 }
-.recycled-notes-cell { max-width: 220px; }
+.recycled-notes-cell { max-width: 320px; min-width: 260px; }
 .recycled-notes { font-size: 12px; color: var(--text-light); cursor: default; }
 .recycled-notes[data-tooltip] { border-bottom: 1px dotted var(--border); cursor: help; }
 .notes-tooltip-box {

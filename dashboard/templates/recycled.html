@@ -90,8 +90,6 @@
         <th>Company</th>
         <th>Phone</th>
         <th>TZ</th>
-        <th>Source</th>
-        <th>Status</th>
         <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">&#9662;</span></th>
         <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
         <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
@@ -129,8 +127,6 @@
           {% else %}—{% endif %}
         </td>
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
-        <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
-        <td><span class="ml-status ml-status-{{ (l.status or 'other')|lower|replace(' ','_') }}">{{ l.status or '—' }}</span></td>
         <td class="score-cell">{{ l.score or '—' }}</td>
         <td>{{ l.lead_age_days if l.lead_age_days is not none else 0 }}d</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
