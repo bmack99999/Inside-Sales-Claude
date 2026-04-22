@@ -861,10 +861,14 @@ body {
 .ml-table .th-date  { width: 98px; }
 .ml-table .th-notes { width: 18%; }
 .ml-table .th-acts  { width: 18%; }
-.ml-table .th-oppname { width: 13%; }
-.ml-table .th-account { width: 12%; }
-.ml-table .th-contact { width: 11%; }
-.ml-table .th-stage   { width: 90px; }
+.ml-opps .th-oppname { width: 140px; }
+.ml-opps .th-account { width: 140px; }
+.ml-opps .th-contact { width: 120px; }
+.ml-opps .th-phone   { width: 110px; }
+.ml-opps .th-stage   { width: 90px; }
+.ml-opps .th-date    { width: 84px; }
+.ml-opps .th-notes   { width: 12%; }
+.ml-opps .th-acts    { width: 12%; }
 /* Timezone badges */
 .tz-badge {
   display: inline-block; padding: 2px 6px; border-radius: 6px;
