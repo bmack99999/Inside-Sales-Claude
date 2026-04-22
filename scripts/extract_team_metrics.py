@@ -40,6 +40,10 @@ MONTH_START = f"{date.today().year}-{date.today().month:02d}-01"
 OUTPUT_PATH = "dashboard/data/team_metrics.json"
 
 
+class SFQueryError(RuntimeError):
+    pass
+
+
 def sf_query(soql):
     result = subprocess.run(
         ["sf", "data", "query", "--query", soql,
@@ -48,10 +52,12 @@ def sf_query(soql):
     )
     try:
         d = json.loads(result.stdout)
-        return d.get("result", {}).get("records", [])
-    except Exception:
-        print(f"  WARN: query failed — {soql[:60]}...", file=sys.stderr)
-        return []
+    except Exception as e:
+        raise SFQueryError(f"Could not parse SF CLI output: {e}. stdout={result.stdout[:200]}")
+    # SF CLI sets status != 0 on errors and returns an error payload.
+    if d.get("status") not in (0, None) or d.get("name") or not isinstance(d.get("result"), dict):
+        raise SFQueryError(f"SF CLI query failed: {d.get('name')} — {d.get('message') or d}")
+    return d.get("result", {}).get("records", [])
 
 
 def main():
@@ -70,6 +76,29 @@ def main():
         stats[oid]["name"]  = name
         stats[oid]["is_me"] = (oid == MY_ID)
 
+    try:
+        records = _pull_all(stats)
+    except SFQueryError as e:
+        print(f"  ABORT: {e}", file=sys.stderr)
+        print(f"  Keeping existing {OUTPUT_PATH} intact. Not posting zeros to Railway.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # If we got this far with zero activity across the entire team, something is likely wrong.
+    # Abort rather than blow away yesterday's good data.
+    total_activity = sum(r["leads"] + r["calls"] + r["won"] + r["uw"] + r["lost"]
+                         for r in stats.values())
+    if total_activity == 0:
+        print("  ABORT: zero activity across all reps — refusing to overwrite good data.",
+              file=sys.stderr)
+        print(f"  Keeping existing {OUTPUT_PATH} intact. Not posting zeros to Railway.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    _write_and_post(stats)
+
+
+def _pull_all(stats):
     # Leads MTD
     print("  Leads...")
     for r in sf_query(
@@ -112,6 +141,8 @@ def main():
         stats[oid]["name"]  = r["Owner"]["Name"]
         stats[oid]["calls"] += 1
 
+
+def _write_and_post(stats):
     # Sort by (won + uw) desc, then name
     rows = sorted(
         stats.values(),
