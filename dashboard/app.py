@@ -418,11 +418,6 @@ def my_leads():
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
-@app.route('/workflow')
-def workflow():
-    return render_template('workflow.html', sf_base=SF_BASE)
-
-
 @app.route('/kpis')
 def kpis():
     kpi_log = [k.to_dict() for k in
@@ -449,126 +444,6 @@ def api_team_metrics():
     if not row:
         return jsonify({'error': 'No team data yet — run Refresh SF Data'})
     return jsonify(row.to_dict())
-
-
-@app.route('/api/daily_workflow')
-def api_daily_workflow():
-    """Generate a prioritized daily workflow: opps, callbacks, recycled leads."""
-    from datetime import timedelta, timezone as tz
-    utc_now = datetime.now(tz.utc)
-    et_offset = timedelta(hours=-4)  # EDT (Apr–Nov)
-    now = utc_now + et_offset
-    today_str = now.date().isoformat()
-
-    # ── Focus Opportunities ──────────────────────────────────────────────
-    opps = [enrich_record(o.to_dict()) for o in Opportunity.query.all()]
-    active_opps = [o for o in opps
-                   if not o.get('stage', '').lower().startswith('closed')]
-    focus_opps = sorted(active_opps, key=lambda x: x['_score'], reverse=True)
-
-    # ── Focus Leads (active, non-recycled) ───────────────────────────────
-    leads = [enrich_record({**l.to_dict(), 'type': 'lead'})
-             for l in Lead.query.all()]
-    focus_leads = sorted(leads, key=lambda x: x['_score'], reverse=True)
-
-    # ── Callbacks due/overdue ────────────────────────────────────────────
-    callbacks = [enrich_callback(c.to_dict()) for c in Callback.query.all()
-                 if not c.do_not_call]
-    cb_due = sorted(
-        [c for c in callbacks if c.get('_task_overdue') or c.get('_task_due_today')],
-        key=lambda x: x.get('task_due') or '9999'
-    )
-    cb_upcoming = sorted(
-        [c for c in callbacks if not c.get('_task_overdue') and not c.get('_task_due_today')],
-        key=lambda x: x.get('task_due') or '9999'
-    )
-
-    # ── Recycled Leads (pick ~50) ────────────────────────────────────────
-    # Determine timezone preference based on time of day (ET business hours)
-    hour = now.hour
-    if hour < 12:
-        tz_pref = ['ET', 'CT']       # morning: call Eastern/Central first
-    elif hour < 15:
-        tz_pref = ['CT', 'MT', 'ET'] # midday: Central/Mountain
-    else:
-        tz_pref = ['MT', 'PT', 'CT'] # afternoon: Mountain/Pacific
-
-    colors = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
-
-    all_recycled = RecycledLead.query.all()
-    candidates = []
-    for r in all_recycled:
-        d = r.to_dict() if hasattr(r, 'to_dict') else {
-            c.name: getattr(r, c.name) for c in r.__table__.columns
-        }
-        # Filter: must have phone, not converted, not colored red
-        if not d.get('phone'):
-            continue
-        if d.get('is_converted'):
-            continue
-        color = colors.get(d['id']) or d.get('color')
-        if color == 'red':
-            continue
-
-        # Score recycled leads for prioritization
-        rscore = 0
-
-        # Category weight
-        cat = d.get('category', '')
-        if cat == 'had_conversation':
-            rscore += 30
-        elif cat == 'no_contact':
-            rscore += 20
-        elif cat == 'no_activity':
-            rscore += 10
-
-        # Timezone match bonus
-        tz = d.get('timezone') or get_phone_tz(d.get('phone'))
-        if tz in tz_pref:
-            rscore += 15 + (len(tz_pref) - tz_pref.index(tz)) * 5
-
-        # Fewer attempts = more opportunity
-        attempts = d.get('attempt_count') or 0
-        if attempts == 0:
-            rscore += 10
-        elif attempts <= 3:
-            rscore += 5
-
-        # Recency bonus (if had conversation, prefer recent)
-        if cat == 'had_conversation' and d.get('last_activity_date'):
-            days = days_since(d['last_activity_date'])
-            if days <= 7:
-                rscore += 10
-            elif days <= 30:
-                rscore += 5
-
-        # Has email = extra touchpoint available
-        if d.get('email'):
-            rscore += 3
-
-        # Color bonus (user flagged as interesting)
-        if color in ('light_green', 'dark_green', 'yellow'):
-            rscore += 8
-
-        d['_recycle_score'] = rscore
-        d['_timezone'] = tz
-        d['_color'] = color
-        candidates.append(d)
-
-    # Sort by score desc, take top 50
-    candidates.sort(key=lambda x: x['_recycle_score'], reverse=True)
-    recycled_picks = candidates[:50]
-
-    return jsonify({
-        'generated_at': now.strftime('%Y-%m-%d %I:%M %p') + ' ET',
-        'focus_opps': focus_opps[:10],
-        'focus_leads': focus_leads[:10],
-        'callbacks_due': cb_due,
-        'callbacks_upcoming': cb_upcoming[:5],
-        'recycled_picks': recycled_picks,
-        'recycled_total_candidates': len(candidates),
-        'tz_preference': tz_pref,
-    })
 
 
 @app.route('/api/tasks')
