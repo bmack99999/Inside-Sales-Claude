@@ -685,7 +685,20 @@ def recycled():
         query = query.filter(RecycledLead.is_converted == True,
                              RecycledLead.converted_opp_id != None)
 
-    leads = [l.to_dict() for l in query.all()]
+    leads = []
+    for r in query.all():
+        d = r.to_dict()
+        # Map recycled fields to my_leads-equivalent fields for template reuse
+        d['type']             = 'lead'
+        d['call_attempts']    = d.get('attempt_count') or 0
+        d['activity_summary'] = d.get('attempt_summary')
+        d['lead_age_days']    = days_since(d.get('lead_created'))
+        if d['lead_age_days'] == 9999:
+            d['lead_age_days'] = None
+        d['sf_url']           = f"{SF_BASE}/lightning/r/Lead/{r.id}/view"
+        d['score']            = score_record(d)
+        leads.append(d)
+    leads.sort(key=lambda x: x['score'] or 0, reverse=True)
 
     sources = sorted(set(
         r.lead_source for r in RecycledLead.query.all()

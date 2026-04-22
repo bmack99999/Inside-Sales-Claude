@@ -63,7 +63,7 @@
   </form>
 
   <div class="recycled-date-range">
-    <label class="recycled-date-label">Created</label>
+    <label class="recycled-date-label">Last Activity</label>
     <input type="date" id="date-from" class="recycled-date-input" onchange="applyFilters()" title="From date">
     <span class="recycled-date-sep">→</span>
     <input type="date" id="date-to"   class="recycled-date-input" onchange="applyFilters()" title="To date">
@@ -81,7 +81,7 @@
 <!-- Results Table -->
 {% if leads %}
 <div class="recycled-table-wrap">
-  <table class="recycled-table">
+  <table class="recycled-table ml-table">
     <thead>
       <tr>
         <th class="color-th"></th>
@@ -89,22 +89,25 @@
         <th>Name</th>
         <th>Company</th>
         <th>Phone</th>
-        <th>Source</th>
-        <th class="sortable" data-col="created" onclick="sortTable('created')">Created <span class="sort-arrow">&#9662;</span></th>
-        <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
-        <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Attempts <span class="sort-arrow"></span></th>
         <th>TZ</th>
-        <th class="notes-th">Notes</th>
-        <th class="notes-th">Activities</th>
+        <th>Source</th>
+        <th>Status</th>
+        <th class="sortable" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">&#9662;</span></th>
+        <th class="sortable" data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
+        <th class="sortable" data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
+        <th class="sortable" data-col="attempts" onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
+        <th>Notes</th>
+        <th>Activities</th>
       </tr>
     </thead>
     <tbody>
       {% for l in leads %}
-      <tr class="recycled-row {% if l.color %}row-color-{{ l.color }}{% endif %}"
+      <tr class="recycled-row ml-row {% if l.color %}row-color-{{ l.color }}{% endif %}"
           data-search="{{ (l.name or '')|lower }} {{ (l.company or '')|lower }} {{ (l.phone or '')|lower }}"
-          data-created="{{ l.lead_created or '' }}"
           data-activity="{{ l.last_activity_date or '' }}"
-          data-attempts="{{ l.attempt_count or 0 }}">
+          data-age="{{ l.lead_age_days or 0 }}"
+          data-attempts="{{ l.call_attempts or 0 }}"
+          data-score="{{ l.score or 0 }}">
         <td class="color-cell">
           <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
                data-sf-id="{{ l.id }}"
@@ -116,6 +119,7 @@
                data-record-email="{{ l.email or '' }}"
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
+        <td class="score-cell">{{ l.score or '—' }}</td>
         <td class="recycled-name">
           <a href="{{ sf_base }}/lightning/r/Lead/{{ l.id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
         </td>
@@ -125,19 +129,20 @@
           <a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>
           {% else %}—{% endif %}
         </td>
-        <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
-        <td>{{ l.lead_created or '—' }}</td>
-        <td>{{ l.last_activity_date or 'Never' }}</td>
-        <td>{{ l.attempt_count or 0 }}</td>
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
+        <td><span class="recycled-source">{{ l.lead_source or '—' }}</span></td>
+        <td><span class="ml-status ml-status-{{ (l.status or 'other')|lower|replace(' ','_') }}">{{ l.status or '—' }}</span></td>
+        <td>{{ l.lead_age_days if l.lead_age_days is not none else 0 }}d</td>
+        <td>{{ l.last_activity_date or 'Never' }}</td>
+        <td>{{ l.call_attempts or 0 }}</td>
         <td class="recycled-notes-cell">
           {% if l.notes_snippet %}
             <span class="recycled-notes" data-tooltip="{{ l.notes_snippet }}">{{ l.notes_snippet[:50] }}{% if l.notes_snippet|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
         <td class="recycled-notes-cell">
-          {% if l.attempt_summary and l.attempt_summary != 'No activity' %}
-            <span class="recycled-notes" data-tooltip="{{ l.attempt_summary }}">{{ l.attempt_summary[:50] }}{% if l.attempt_summary|length > 50 %}…{% endif %}</span>
+          {% if l.activity_summary and l.activity_summary != 'No activity' %}
+            <span class="recycled-notes" data-tooltip="{{ l.activity_summary }}">{{ l.activity_summary[:50] }}{% if l.activity_summary|length > 50 %}…{% endif %}</span>
           {% else %}—{% endif %}
         </td>
       </tr>
@@ -336,7 +341,7 @@ cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
 
 // ── State persistence ─────────────────────────────────────────────────────────
 // Key includes category + converted so each tab combo saves independently
-const STATE_KEY = 'recycled_v1_{{ category }}_{{ converted }}';
+const STATE_KEY = 'recycled_v2_{{ converted }}';
 
 function saveState() {
   try {
@@ -365,12 +370,12 @@ function applyFilters() {
 
   let visible = 0;
   document.querySelectorAll('.recycled-row').forEach(row => {
-    const text    = row.dataset.search  || '';
-    const created = row.dataset.created || '';
+    const text     = row.dataset.search   || '';
+    const activity = row.dataset.activity || '';
 
     const matchSearch = !query   || text.includes(query);
-    const matchFrom   = !fromVal || created >= fromVal;
-    const matchTo     = !toVal   || created <= toVal;
+    const matchFrom   = !fromVal || activity >= fromVal;
+    const matchTo     = !toVal   || activity <= toVal;
 
     const show = matchSearch && matchFrom && matchTo;
     row.style.display = show ? '' : 'none';
@@ -388,8 +393,8 @@ function clearDates() {
   applyFilters();
 }
 
-let currentSort = 'created';
-let sortAsc = false; // default: newest first
+let currentSort = 'score';
+let sortAsc = false; // default: highest first
 
 function sortTable(col, skipToggle) {
   const tbody = document.querySelector('.recycled-table tbody');
@@ -414,7 +419,7 @@ function sortTable(col, skipToggle) {
     let va = a.dataset[col] || '';
     let vb = b.dataset[col] || '';
 
-    if (col === 'attempts') {
+    if (['age','attempts','days','score'].includes(col)) {
       va = parseInt(va) || 0;
       vb = parseInt(vb) || 0;
     }
@@ -437,21 +442,21 @@ function sortTable(col, skipToggle) {
   try {
     const raw = localStorage.getItem(STATE_KEY);
     if (!raw) {
-      // No saved state — apply default sort (created desc)
-      sortTable('created', true);
+      // No saved state — apply default sort (score desc)
+      sortTable('score', true);
       return;
     }
     const s = JSON.parse(raw);
     document.getElementById('recycled-search').value = s.search   || '';
     document.getElementById('date-from').value        = s.dateFrom || '';
     document.getElementById('date-to').value          = s.dateTo   || '';
-    currentSort = s.sortCol || 'created';
+    currentSort = s.sortCol || 'score';
     sortAsc     = !!s.sortAsc;
     applyFilters();           // filter first so hidden rows don't affect scroll
     sortTable(currentSort, true); // restore sort without toggling direction
     if (s.scrollY) setTimeout(() => window.scrollTo(0, s.scrollY), 80);
   } catch(e) {
-    sortTable('created', true);
+    sortTable('score', true);
   }
 })();
 </script>
