@@ -268,7 +268,10 @@ function selectEmailSlot(slot) {
 function generateDrafts() {
   const count = Object.keys(emailQueue).length;
   if (!count) return;
-  alert('Draft generation coming soon! (' + count + ' queued)\n\nThis will create Gmail drafts once the Gmail tool is reconnected.');
+  alert(count + ' email(s) queued.\n\n' +
+    'Switch to Claude Code on your Mac and say:\n' +
+    '  "generate my email drafts"\n\n' +
+    'Claude will fetch the queue, create Gmail drafts, and clear the queue.');
 }
 
 // ── Color picker (fixed-position shared popup) ────────────────────────────────

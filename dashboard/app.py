@@ -1171,6 +1171,76 @@ def get_email_queue():
     return jsonify(queue)
 
 
+def _resolve_tokens(text, first_name, full_name, company):
+    """Replace {first_name}/{full_name}/{company} tokens in template text."""
+    if not text:
+        return ''
+    return (text
+        .replace('{first_name}', first_name or '')
+        .replace('{full_name}',  full_name  or '')
+        .replace('{company}',    company    or ''))
+
+
+@app.route('/api/email_drafts_data')
+def get_email_drafts_data():
+    """Return queued items joined with lead + template data, tokens resolved.
+    Used by the Claude agent to create Gmail drafts via MCP.
+    """
+    templates = {t.slot: t for t in EmailTemplate.query.all()}
+    queue_rows = LeadEmailQueue.query.all()
+
+    drafts = []
+    skipped = []
+    for q in queue_rows:
+        tpl = templates.get(q.slot)
+        if not tpl or not (tpl.subject or tpl.body):
+            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'empty template'})
+            continue
+
+        # Look up the lead in either Lead or RecycledLead (opps have no email)
+        lead = Lead.query.get(q.sf_id) or RecycledLead.query.get(q.sf_id)
+        if not lead:
+            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'lead not found'})
+            continue
+        if not lead.email:
+            skipped.append({'sf_id': q.sf_id, 'slot': q.slot, 'reason': 'no email on lead'})
+            continue
+
+        full_name  = (lead.name or '').strip()
+        first_name = full_name.split()[0] if full_name else ''
+        company    = (lead.company or '').strip()
+
+        drafts.append({
+            'sf_id':      q.sf_id,
+            'slot':       q.slot,
+            'to':         lead.email,
+            'first_name': first_name,
+            'full_name':  full_name,
+            'company':    company,
+            'subject':    _resolve_tokens(tpl.subject, first_name, full_name, company),
+            'body':       _resolve_tokens(tpl.body,    first_name, full_name, company),
+        })
+
+    return jsonify({'drafts': drafts, 'skipped': skipped})
+
+
+@app.route('/api/email_queue/clear', methods=['POST'])
+def clear_email_queue():
+    """Remove queue entries. JSON: {"sf_ids": [...]} or {"all": true}."""
+    data = request.get_json() or {}
+    if data.get('all'):
+        count = LeadEmailQueue.query.delete()
+        db.session.commit()
+        return jsonify({'ok': True, 'cleared': count})
+
+    sf_ids = data.get('sf_ids') or []
+    if not sf_ids:
+        return jsonify({'error': 'sf_ids or all required'}), 400
+    count = LeadEmailQueue.query.filter(LeadEmailQueue.sf_id.in_(sf_ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({'ok': True, 'cleared': count})
+
+
 @app.route('/api/log_email_tasks', methods=['POST'])
 def log_email_tasks():
     """Create completed Email tasks in Salesforce for the given leads.

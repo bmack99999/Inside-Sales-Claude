@@ -76,6 +76,18 @@ Scores leads and opps 1-100 for daily call prioritization:
 - **API Key:** `d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d`
 - **DB migrations:** App auto-runs `ALTER TABLE ADD COLUMN IF NOT EXISTS` on startup (no Alembic)
 
+## Gmail Draft Generation Workflow
+Bryce queues email drafts on the dashboard (envelope icon on each lead row → pick template slot 1/2/3). The queue state lives in Railway. Gmail drafts are created by **Claude (this agent) via the Gmail MCP**, not by Railway itself.
+
+When Bryce says **"generate my email drafts"** (or similar):
+1. `GET https://web-production-980e0.up.railway.app/api/email_drafts_data` — returns `{drafts: [...], skipped: [...]}` with tokens already resolved
+2. For each draft, call the Gmail MCP `create_draft` tool with `to=[draft.to]`, `subject=draft.subject`, `body=draft.body`
+3. After all drafts created, `POST /api/email_queue/clear` with `{"all": true}` to clear the queue
+4. Report: N drafts created, any skipped items, and any MCP errors
+
+Templates support `{first_name}`, `{full_name}`, `{company}` tokens (resolved server-side).
+Opportunities are excluded (no email field on the Opp model — only leads & recycled leads).
+
 ## Salesforce Safety Rules — NON-NEGOTIABLE
 **NEVER perform any of the following, even if it seems helpful:**
 1. Never delete a lead
