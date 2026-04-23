@@ -76,6 +76,22 @@
   </div>
 
   <span class="recycled-filter-count" id="filter-count">Showing {{ leads|length }} records</span>
+
+  <div class="color-clear-wrap">
+    <button type="button" class="btn-clear-colors" onclick="toggleClearColorsMenu(event)">
+      🧹 Clear Colors <span class="cc-caret">▾</span>
+    </button>
+    <div class="cc-menu" id="clearColorsMenu" style="display:none;">
+      <div class="cc-item" data-clear="yellow"><span class="cc-dot cp-yellow"></span>Yellow</div>
+      <div class="cc-item" data-clear="red"><span class="cc-dot cp-red"></span>Red</div>
+      <div class="cc-item" data-clear="blue"><span class="cc-dot cp-blue"></span>Blue</div>
+      <div class="cc-item" data-clear="light_green"><span class="cc-dot cp-light_green"></span>Light Green</div>
+      <div class="cc-item" data-clear="dark_green"><span class="cc-dot cp-dark_green"></span>Dark Green</div>
+      <div class="cc-item" data-clear="purple"><span class="cc-dot cp-purple"></span>Purple</div>
+      <div class="cc-divider"></div>
+      <div class="cc-item cc-item-all" data-clear="all"><span class="cc-dot cc-dot-all">✕</span>All Colors</div>
+    </div>
+  </div>
 </div>
 
 <!-- Results Table -->
@@ -281,6 +297,43 @@ let activeTrigger = null;
 
 // Move popup to body so table overflow never clips it
 document.body.appendChild(cpPopup);
+
+// Bulk clear color coding
+function toggleClearColorsMenu(e) {
+  e.stopPropagation();
+  const m = document.getElementById('clearColorsMenu');
+  m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+}
+document.addEventListener('click', function(e){
+  const m = document.getElementById('clearColorsMenu');
+  if (!m) return;
+  if (!e.target.closest('.color-clear-wrap')) m.style.display = 'none';
+});
+document.querySelectorAll('#clearColorsMenu .cc-item').forEach(el => {
+  el.addEventListener('click', function(){
+    const color = this.dataset.clear;
+    const label = this.textContent.trim();
+    if (!confirm(`Clear color coding for "${label}"? This cannot be undone.`)) return;
+    fetch('/api/clear_colors', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({color: color})
+    }).then(r => r.json()).then(res => {
+      if (!res || !res.ok) { alert('Clear failed: ' + (res && res.error || 'unknown error')); return; }
+      const rows = document.querySelectorAll('tr.recycled-row');
+      rows.forEach(row => {
+        const match = row.className.match(/\brow-color-(\S+)/);
+        if (!match) return;
+        if (color === 'all' || match[1] === color) {
+          row.className = row.className.replace(/\brow-color-\S+/g, '').trim();
+          const t = row.querySelector('.color-trigger');
+          if (t) t.className = 'color-trigger';
+        }
+      });
+      document.getElementById('clearColorsMenu').style.display = 'none';
+    }).catch(err => alert('Clear failed: ' + err));
+  });
+});
 
 function openColorPicker(trigger) {
   if (activeTrigger === trigger && cpPopup.style.display !== 'none') {

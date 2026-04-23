@@ -989,6 +989,35 @@ def set_lead_color():
     return jsonify({'ok': True, 'sf_id': sf_id, 'color': color})
 
 
+@app.route('/api/clear_colors', methods=['POST'])
+def clear_lead_colors():
+    """
+    Bulk clear color tags.
+    Body: {"color": "yellow"}   -> clear only yellow-tagged rows
+          {"color": "all"} | {} -> clear every color tag
+    Returns: {"ok": true, "cleared": N, "color": "yellow"|"all"}
+    """
+    data  = request.get_json() or {}
+    color = (data.get('color') or '').strip().lower()
+
+    valid = {'yellow', 'red', 'blue', 'light_green', 'dark_green', 'purple'}
+    if color and color != 'all' and color not in valid:
+        return jsonify({'error': f'invalid color: {color}'}), 400
+
+    if not color or color == 'all':
+        cleared = LeadColor.query.delete(synchronize_session=False)
+        RecycledLead.query.filter(RecycledLead.color.isnot(None)) \
+                          .update({'color': None}, synchronize_session=False)
+    else:
+        cleared = LeadColor.query.filter_by(color=color) \
+                                 .delete(synchronize_session=False)
+        RecycledLead.query.filter_by(color=color) \
+                          .update({'color': None}, synchronize_session=False)
+
+    db.session.commit()
+    return jsonify({'ok': True, 'cleared': cleared, 'color': color or 'all'})
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @app.route('/settings')
