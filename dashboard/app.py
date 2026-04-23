@@ -138,76 +138,170 @@ def add_skipped_today(record_id):
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
-_POSITIVE_SIGNALS = (
-    'interested', 'callback', 'demo', 'meeting', 'pricing',
-    'quote', 'scheduled', 'wants', 'proposal', 'ready', 'signed',
-    'moving forward', 'send over', 'follow up',
+_REAL_CONTACT_KEYWORDS = (
+    'spoke', 'talked', 'connected', 'discussed', 'call w/', 'call with',
+    'meeting', 'replied', 'responded', 'response from', 'answered',
+    'conversation', 'reached',
 )
 
-def score_record(record):
-    """Score a lead or opp 1-100 for call priority. Higher = call sooner."""
-    score = 0
+_NO_CONTACT_KEYWORDS = (
+    'lvm', 'vm', 'voicemail', 'no answer', ' na ', 'left message',
+    'no response', 'unanswered', 'went to voicemail', 'mailbox',
+)
 
-    # Activity recency (max 35) — prime window is 4-7 days after last contact
-    age = days_since(record.get('last_activity_date'))
-    if age == 9999:   score += 20   # never contacted — needs first touch
-    elif age <= 1:    score += 8    # just talked — give it a day
-    elif age <= 3:    score += 22   # 2-3 days — good time
-    elif age <= 7:    score += 35   # 4-7 days — PRIME window
-    elif age <= 14:   score += 22   # 8-14 days — still warm
-    elif age <= 21:   score += 10   # 15-21 days — cooling
-    elif age <= 30:   score += 4    # 22-30 days — cold
-    # 30+ days: 0
+_FOOD_KEYWORDS = (
+    'restaurant', 'cafe', 'grill', 'pizza', 'bar ', ' bar', 'kitchen',
+    'bistro', 'diner', 'taco', 'burger', 'deli', 'bakery', 'bbq',
+    'food', 'eatery', 'tavern', 'pub', 'sushi', 'thai', 'mexican',
+    'chinese', 'asian', 'juice', 'coffee', 'donut', 'ice cream',
+    'wings', 'seafood', 'steakhouse', 'catering', 'cuisine', 'grille',
+    'noodle', 'ramen', 'curry', 'bagel', 'sandwich', 'smoothie',
+    'creamery', 'brewery', 'winery', 'saloon', 'cantina', 'trattoria',
+    'pizzeria', 'rotisserie', 'hibachi', 'teriyaki', 'pho', 'dim sum',
+    'eats', 'kitchen', 'buffet', 'grocer', 'market',
+)
 
-    # Open / overdue task (max 30)
-    due_in = days_until(record.get('next_task_due'))
-    if due_in <= 0:   score += 30   # overdue or due today
-    elif due_in == 1: score += 20   # due tomorrow
-    elif due_in <= 7: score += 10   # due this week
 
-    # Type-specific factors (max 30 for leads, 25 for opps)
-    rec_type = record.get('type', 'lead')
-    if rec_type == 'lead':
-        status = (record.get('status') or '').lower()
-        if any(s in status for s in ('working', 'qualified')):
-            score += 20
-        elif 'new' in status:
-            score += 12
-        else:
-            score += 5
-        attempts = record.get('call_attempts', 0) or 0
-        if 1 <= attempts <= 5:    score += 10
-        elif attempts == 0:       score += 7
-        elif attempts <= 10:      score += 4
-        # 11+ attempts: 0
-    else:
-        stage = (record.get('stage') or '').lower()
-        if any(s in stage for s in ('proposal', 'analysis', 'demo')):
-            score += 25
-        elif 'conversation' in stage:
-            score += 18
-        else:
-            score += 8
-        dis = record.get('days_in_stage', 0) or 0
-        if dis > 30: score -= 8
-
-    # Positive signals in notes (max 5)
-    notes = (
+def _text_blob(record):
+    return (
         (record.get('activity_summary') or '') + ' ' +
-        (record.get('notes_snippet') or '')
+        (record.get('notes_snippet') or '') + ' ' +
+        (record.get('last_call_notes') or '')
     ).lower()
-    if any(sig in notes for sig in _POSITIVE_SIGNALS):
-        score += 5
 
+
+def _comm_quality(notes):
+    """Return +adjustment based on whether notes show real two-way contact."""
+    has_real = any(kw in notes for kw in _REAL_CONTACT_KEYWORDS)
+    has_no_contact = any(kw in notes for kw in _NO_CONTACT_KEYWORDS)
+    if has_real:
+        return 'real'
+    if has_no_contact:
+        return 'none'
+    return 'neutral'
+
+
+def _looks_like_food_business(company):
+    if not company:
+        return True  # no company name — don't penalize
+    c = ' ' + company.lower() + ' '
+    return any(kw in c for kw in _FOOD_KEYWORDS)
+
+
+def score_opportunity(record):
+    """Score an opp 1-100: stage sets base, activity decay + comm quality adjust."""
+    stage = (record.get('stage') or '').lower()
+
+    # Stage base (low → high)
+    if 'underwriting' in stage:
+        base = 98
+    elif 'agreement' in stage:
+        base = 95
+    elif 'merchant application' in stage or 'application' in stage:
+        base = 95
+    elif 'proposal' in stage:
+        base = 85
+    elif 'trending' in stage:   # Trending Positively
+        base = 75
+    elif 'conversation' in stage:
+        base = 65
+    else:
+        base = 65   # fallback → treat as Conversations (default stage)
+
+    # Activity decay (days since last activity; fall back to days since created)
+    age = days_since(record.get('last_activity_date'))
+    if age == 9999:
+        age = days_since(record.get('created_date'))
+    if age <= 2:      decay = 0
+    elif age <= 7:    decay = 5
+    elif age <= 14:   decay = 15
+    elif age <= 30:   decay = 30
+    else:             decay = 45
+
+    # Communication quality
+    comm = _comm_quality(_text_blob(record))
+    if comm == 'real':    comm_adj = 5
+    elif comm == 'none':  comm_adj = -5
+    else:                 comm_adj = 0
+
+    # Days-in-stage stall penalty
+    dis = record.get('days_in_stage', 0) or 0
+    if dis > 45:      stall = 10
+    elif dis > 21:    stall = 5
+    else:             stall = 0
+
+    score = base - decay + comm_adj - stall
     return max(1, min(100, score))
 
 
+def score_lead(record):
+    """Score a lead 1-100: fresher + real comm = higher; stale + many attempts = lower."""
+    # Base by lead age
+    age = record.get('lead_age_days')
+    if age is None:
+        age = days_since(record.get('lead_created'))
+        if age == 9999:
+            age = 0
+    if age <= 2:       base = 70
+    elif age <= 7:     base = 55
+    elif age <= 14:    base = 40
+    elif age <= 30:    base = 25
+    else:              base = 12
+
+    # Activity recency bonus
+    act_age = days_since(record.get('last_activity_date'))
+    if act_age <= 1:        act_adj = 15
+    elif act_age <= 4:      act_adj = 10
+    elif act_age <= 10:     act_adj = 5
+    elif act_age <= 21:     act_adj = 0
+    else:                   act_adj = -5
+
+    # Call-attempts curve
+    attempts = record.get('call_attempts', 0) or 0
+    if attempts == 0:       att_adj = 5
+    elif attempts <= 3:     att_adj = 10
+    elif attempts <= 6:     att_adj = 5
+    elif attempts <= 10:    att_adj = -5
+    elif attempts <= 15:    att_adj = -15
+    else:                   att_adj = -25
+
+    # Communication quality
+    comm = _comm_quality(_text_blob(record))
+    if comm == 'real':      comm_adj = 10
+    elif comm == 'none':    comm_adj = -5
+    else:                   comm_adj = 0
+
+    # Non-restaurant penalty (only bites when attempts pile up)
+    company = record.get('company')
+    food_adj = 0
+    if not _looks_like_food_business(company):
+        if attempts >= 12:   food_adj = -25
+        elif attempts >= 6:  food_adj = -15
+
+    # Status nudge
+    status = (record.get('status') or '').lower()
+    if any(s in status for s in ('working', 'qualified', 'contacted')):
+        status_adj = 5
+    else:
+        status_adj = 0
+
+    score = base + act_adj + att_adj + comm_adj + food_adj + status_adj
+    return max(1, min(100, score))
+
+
+def score_record(record):
+    """Dispatch to lead or opp scorer. Returns 1-100."""
+    if record.get('type') == 'opportunity':
+        return score_opportunity(record)
+    return score_lead(record)
+
+
 def badge_tier(score):
-    if score >= 70:
+    if score >= 75:
         return ('HOT', 'badge-hot')
-    elif score >= 40:
+    elif score >= 50:
         return ('WARM', 'badge-warm')
-    elif score >= 10:
+    elif score >= 25:
         return ('COOL', 'badge-cool')
     else:
         return ('COLD', 'badge-cold')
