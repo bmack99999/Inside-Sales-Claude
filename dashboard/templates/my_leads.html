@@ -487,8 +487,13 @@ function clearDates() {
 }
 
 // ── Sort ──────────────────────────────────────────────────────────────────────
+{% if tab == 'leads' %}
+let currentSort = 'age';
+let sortAsc = false;   // sortTable flips this to true → ascending (newest first)
+{% else %}
 let currentSort = 'score';
 let sortAsc = false;
+{% endif %}
 
 function sortTable(col) {
   const tbody = document.querySelector('.ml-table tbody');
