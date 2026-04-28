@@ -491,8 +491,8 @@ function clearDates() {
 let currentSort = 'age';
 let sortAsc = false;   // sortTable flips this to true → ascending (newest first)
 {% else %}
-let currentSort = 'score';
-let sortAsc = false;
+let currentSort = 'created';
+let sortAsc = true;    // sortTable flips this to false → descending (newest first)
 {% endif %}
 
 function sortTable(col) {
