@@ -85,6 +85,10 @@ def extract_leads():
     # Get recent activities (completed tasks = call logs, emails, etc.)
     activities_by_lead = get_recent_activities(lead_ids, "WhoId")
 
+    # Per-lead completed-call counts (accurate, not truncated by the 200-row
+    # limit on get_recent_activities)
+    call_counts_by_lead = get_call_counts(lead_ids, "WhoId")
+
     # Get ContentNotes for leads
     content_notes_by_lead = get_content_notes(lead_ids)
 
@@ -103,9 +107,9 @@ def extract_leads():
             next_task = soonest[0].get("Subject")
             next_task_due = soonest[0].get("ActivityDate")
 
-        # Count call attempts from activities
-        call_attempts = sum(1 for a in activities if a.get("TaskSubtype") == "Call"
-                           or (a.get("Subject") or "").lower().startswith("call"))
+        # Per-lead completed-call count (from aggregate query — accurate
+        # regardless of how many leads were pulled).
+        call_attempts = call_counts_by_lead.get(lid, 0)
 
         # Build activity summary from last 3 activities
         activity_summary = None
@@ -297,7 +301,13 @@ def get_tasks_for_records(record_ids, id_field):
 
 
 def get_recent_activities(record_ids, id_field):
-    """Get recent completed tasks (activities) grouped by parent record ID."""
+    """Get recent completed tasks (activities) grouped by parent record ID.
+
+    Note: LIMIT 200 is intentional — these activities are only used to
+    populate `last_activity_type`, `last_call_notes`, and `activity_summary`
+    on the most recently active records. Per-lead call totals are computed
+    separately via get_call_counts() to avoid the 200-row truncation bug.
+    """
     if not record_ids:
         return {}
     id_list = "','".join(record_ids)
@@ -315,6 +325,35 @@ def get_recent_activities(record_ids, id_field):
         if parent:
             grouped.setdefault(parent, []).append(a)
     return grouped
+
+
+def get_call_counts(record_ids, id_field):
+    """Return {parent_id: completed_call_count} via aggregate SOQL.
+
+    Uses the canonical filter Type='Call' AND Status='Completed' (same as
+    extract_team_metrics.py) so the count matches the team leaderboard.
+    Aggregate GROUP BY query returns one row per parent, so this is not
+    affected by the 200-row LIMIT in get_recent_activities.
+    """
+    if not record_ids:
+        return {}
+    counts = {}
+    # Batch in chunks to keep SOQL under the 100,000 char limit
+    batch_size = 200
+    for i in range(0, len(record_ids), batch_size):
+        batch = record_ids[i:i + batch_size]
+        id_list = "','".join(batch)
+        rows = run_soql(
+            f"SELECT {id_field} pid, COUNT(Id) cnt FROM Task "
+            f"WHERE {id_field} IN ('{id_list}') "
+            f"AND Type = 'Call' AND Status = 'Completed' "
+            f"GROUP BY {id_field}"
+        )
+        for r in rows:
+            pid = r.get("pid") or r.get(id_field)
+            if pid:
+                counts[pid] = r.get("cnt", 0)
+    return counts
 
 
 def get_content_notes(record_ids):
