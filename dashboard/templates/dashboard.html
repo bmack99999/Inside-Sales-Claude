@@ -62,9 +62,9 @@
       <circle cx="100" cy="100" r="2.5" fill="#fff"/>
       <!-- Zone tick marks -->
       <text x="16"  y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">0</text>
-      <text x="68"  y="30"  font-size="9" fill="#d97706" text-anchor="middle" font-weight="600">75</text>
-      <text x="132" y="30"  font-size="9" fill="#16a34a" text-anchor="middle" font-weight="600">100</text>
-      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">120</text>
+      <text x="68"  y="30"  font-size="9" fill="#d97706" text-anchor="middle" font-weight="600">56</text>
+      <text x="132" y="30"  font-size="9" fill="#16a34a" text-anchor="middle" font-weight="600">75</text>
+      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">90</text>
     </svg>
     <div class="gauge-count-wrap">
       <span class="gauge-count" id="gauge-count">—</span>
@@ -94,7 +94,7 @@
       <circle cx="100" cy="100" r="6" fill="var(--navy)"/>
       <circle cx="100" cy="100" r="2.5" fill="#fff"/>
       <text x="16"  y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">0</text>
-      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600" id="gauge-week-max-label">500</text>
+      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600" id="gauge-week-max-label">450</text>
     </svg>
     <div class="gauge-count-wrap">
       <span class="gauge-count" id="gauge-count-week">—</span>
@@ -519,21 +519,22 @@
 
       // ── Daily gauge ── (tasks + notes)
       const todayCount  = data.daily_count != null ? data.daily_count : (data.completed || []).length;
-      const DAILY_MAX   = 120;
+      const DAILY_GOAL  = 75;
+      const DAILY_MAX   = 90;
       renderGauge('gauge-arc', 'gauge-needle', 'gauge-count', 'gauge-label',
-                  todayCount, 100, DAILY_MAX, 'gauge-pct');
+                  todayCount, DAILY_GOAL, DAILY_MAX, 'gauge-pct');
       if (data.date)
         document.getElementById('gauge-refreshed').textContent = 'As of last SF sync · ' + data.date;
 
       // ── Weekly gauge ──
       const weekCount  = data.weekly_count || 0;
       const days       = bizDaysElapsed();
-      const weekTarget = 100 * days;
-      const WEEK_MAX   = 100 * 5 * 1.2; // 600 — 20% headroom above full week
+      const weekTarget = 75 * days;
+      const WEEK_MAX   = 75 * 5 * 1.2; // 450 — 20% headroom above full week
       renderGauge('gauge-arc-week', 'gauge-needle-week', 'gauge-count-week', 'gauge-label-week',
                   weekCount, weekTarget, WEEK_MAX, 'gauge-pct-week');
       document.getElementById('gauge-week-target').textContent = `Target: ${weekTarget} (${days} day${days!==1?'s':''})`;
-      document.getElementById('gauge-week-max-label').textContent = '600';
+      document.getElementById('gauge-week-max-label').textContent = '450';
       if (data.date)
         document.getElementById('gauge-refreshed-week').textContent = 'As of last SF sync · ' + data.date;
     })
