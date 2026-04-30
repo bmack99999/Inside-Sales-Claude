@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Extract team leaderboard metrics from Salesforce via SF CLI.
+Pulls a snapshot for every month from Mar 2026 (Bryce's start) through
+the current month so the KPIs page can show any month on demand.
 Writes dashboard/data/team_metrics.json and POSTs to Railway.
 """
 
@@ -36,7 +38,8 @@ TEAM = {
 }
 
 TEAM_IDS = ",".join(f"'{i}'" for i in TEAM)
-MONTH_START = f"{date.today().year}-{date.today().month:02d}-01"
+HISTORY_START_YEAR  = 2026
+HISTORY_START_MONTH = 3
 OUTPUT_PATH = "dashboard/data/team_metrics.json"
 
 
@@ -54,56 +57,51 @@ def sf_query(soql):
         d = json.loads(result.stdout)
     except Exception as e:
         raise SFQueryError(f"Could not parse SF CLI output: {e}. stdout={result.stdout[:200]}")
-    # SF CLI sets status != 0 on errors and returns an error payload.
     if d.get("status") not in (0, None) or d.get("name") or not isinstance(d.get("result"), dict):
         raise SFQueryError(f"SF CLI query failed: {d.get('name')} — {d.get('message') or d}")
     return d.get("result", {}).get("records", [])
 
 
-def main():
-    print("Extracting team metrics from Salesforce...")
+def _month_bounds(y, m):
+    start = date(y, m, 1).isoformat()
+    end   = date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1).isoformat()
+    return start, end
 
-    stats = defaultdict(lambda: {
+
+def _iter_months(start_y, start_m, end_y, end_m):
+    y, m = start_y, start_m
+    while (y, m) <= (end_y, end_m):
+        yield y, m
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+
+def _empty_stats():
+    out = defaultdict(lambda: {
         "name": "", "is_me": False,
         "leads": 0, "converted": 0,
         "calls": 0,
         "won": 0, "uw": 0, "lost": 0,
         "apv_won": 0.0,
     })
-
-    # Seed names so everyone appears even with 0 activity
     for oid, name in TEAM.items():
-        stats[oid]["name"]  = name
-        stats[oid]["is_me"] = (oid == MY_ID)
-
-    try:
-        records = _pull_all(stats)
-    except SFQueryError as e:
-        print(f"  ABORT: {e}", file=sys.stderr)
-        print(f"  Keeping existing {OUTPUT_PATH} intact. Not posting zeros to Railway.",
-              file=sys.stderr)
-        sys.exit(1)
-
-    # If we got this far with zero activity across the entire team, something is likely wrong.
-    # Abort rather than blow away yesterday's good data.
-    total_activity = sum(r["leads"] + r["calls"] + r["won"] + r["uw"] + r["lost"]
-                         for r in stats.values())
-    if total_activity == 0:
-        print("  ABORT: zero activity across all reps — refusing to overwrite good data.",
-              file=sys.stderr)
-        print(f"  Keeping existing {OUTPUT_PATH} intact. Not posting zeros to Railway.",
-              file=sys.stderr)
-        sys.exit(1)
-
-    _write_and_post(stats)
+        out[oid]["name"]  = name
+        out[oid]["is_me"] = (oid == MY_ID)
+    return out
 
 
-def _pull_all(stats):
-    # Leads MTD
-    print("  Leads...")
+def _pull_month(y, m, is_current):
+    start, end = _month_bounds(y, m)
+    stats = _empty_stats()
+
+    # Leads created in [start, end)
     for r in sf_query(
         f"SELECT OwnerId, Owner.Name, IsConverted FROM Lead "
-        f"WHERE OwnerId IN ({TEAM_IDS}) AND CreatedDate >= {MONTH_START}T00:00:00Z"
+        f"WHERE OwnerId IN ({TEAM_IDS}) "
+        f"AND CreatedDate >= {start}T00:00:00Z "
+        f"AND CreatedDate < {end}T00:00:00Z"
     ):
         oid = r["OwnerId"]
         stats[oid]["name"] = r["Owner"]["Name"]
@@ -111,13 +109,23 @@ def _pull_all(stats):
         if r["IsConverted"]:
             stats[oid]["converted"] += 1
 
-    # Opps closed MTD + in Underwriting Review
-    print("  Opportunities...")
+    # Opps: current month keeps the original "OR CreatedDate" capture so UW
+    # opps without a close date still show. Past months filter strictly by
+    # CloseDate to avoid double counting across months.
+    if is_current:
+        opp_filter = (
+            f"AND (IsClosed=true OR StageName='Underwriting Review') "
+            f"AND (CloseDate >= {start} OR CreatedDate >= {start}T00:00:00Z)"
+        )
+    else:
+        opp_filter = (
+            f"AND (IsClosed=true OR StageName='Underwriting Review') "
+            f"AND CloseDate >= {start} AND CloseDate < {end}"
+        )
     for r in sf_query(
         f"SELECT OwnerId, Owner.Name, StageName, Estimated_Annual_Processing_Volume__c "
         f"FROM Opportunity WHERE OwnerId IN ({TEAM_IDS}) "
-        f"AND (IsClosed=true OR StageName='Underwriting Review') "
-        f"AND (CloseDate >= {MONTH_START} OR CreatedDate >= {MONTH_START}T00:00:00Z)"
+        f"{opp_filter}"
     ):
         oid = r["OwnerId"]
         stats[oid]["name"] = r["Owner"]["Name"]
@@ -130,48 +138,79 @@ def _pull_all(stats):
         else:
             stats[oid]["lost"] += 1
 
-    # Completed calls MTD
-    print("  Calls...")
+    # Completed calls in [start, end)
     for r in sf_query(
         f"SELECT OwnerId, Owner.Name FROM Task "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND Type='Call' AND Status='Completed' "
-        f"AND CreatedDate >= {MONTH_START}T00:00:00Z"
+        f"AND CreatedDate >= {start}T00:00:00Z "
+        f"AND CreatedDate < {end}T00:00:00Z"
     ):
         oid = r["OwnerId"]
         stats[oid]["name"]  = r["Owner"]["Name"]
         stats[oid]["calls"] += 1
 
-
-def _write_and_post(stats):
-    # Sort by (won + uw) desc, then name
-    rows = sorted(
-        stats.values(),
-        key=lambda x: (-(x["won"] + x["uw"]), x["name"])
-    )
-
-    # Assign rank
+    rows = sorted(stats.values(), key=lambda x: (-(x["won"] + x["uw"]), x["name"]))
     for i, r in enumerate(rows):
         r["rank"] = i + 1
 
+    return {
+        "month_label": date(y, m, 1).strftime("%B %Y"),
+        "month_start": start,
+        "reps":        rows,
+    }
+
+
+def main():
+    print("Extracting team metrics from Salesforce...")
+    today = date.today()
+    current_key = f"{today.year:04d}-{today.month:02d}"
+
+    snapshots = {}
+    for y, m in _iter_months(HISTORY_START_YEAR, HISTORY_START_MONTH,
+                             today.year, today.month):
+        key = f"{y:04d}-{m:02d}"
+        is_current = (key == current_key)
+        print(f"  {key}{' (current)' if is_current else ''}...")
+        try:
+            snapshots[key] = _pull_month(y, m, is_current)
+        except SFQueryError as e:
+            print(f"  ABORT on {key}: {e}", file=sys.stderr)
+            print(f"  Keeping existing {OUTPUT_PATH} intact. Not posting to Railway.",
+                  file=sys.stderr)
+            sys.exit(1)
+
+    current = snapshots.get(current_key)
+    if not current:
+        print("  ABORT: current month snapshot missing", file=sys.stderr)
+        sys.exit(1)
+
+    # Sanity check current month — if zero activity, refuse to overwrite.
+    total_activity = sum(r["leads"] + r["calls"] + r["won"] + r["uw"] + r["lost"]
+                         for r in current["reps"])
+    if total_activity == 0:
+        print("  ABORT: zero activity across all reps in current month — "
+              "refusing to overwrite good data.", file=sys.stderr)
+        sys.exit(1)
+
     output = {
-        "refreshed_at": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-        "month":        date.today().strftime("%B %Y"),
-        "month_start":  MONTH_START,
-        "reps":         rows,
+        "refreshed_at":      datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+        "month":             current["month_label"],
+        "month_start":       current["month_start"],
+        "reps":              current["reps"],
+        "monthly_snapshots": snapshots,
     }
 
     with open(OUTPUT_PATH, "w") as f:
         json.dump(output, f, indent=2)
 
-    print(f"  Done — {len(rows)} reps written to {OUTPUT_PATH}")
-    for r in rows:
+    print(f"  Done — {len(current['reps'])} reps, {len(snapshots)} months written to {OUTPUT_PATH}")
+    for r in current["reps"]:
         total = r["won"] + r["uw"]
         rate  = f"{total/r['leads']*100:.0f}%" if r["leads"] else "--"
         you   = " ◀" if r["is_me"] else ""
         print(f"    #{r['rank']} {r['name']:<22} {r['leads']:>4} leads  "
               f"{r['won']}W/{r['uw']}UW={total} ({rate}){you}")
 
-    # POST to Railway dashboard so the live site updates immediately
     if requests:
         print(f"\n  Posting to Railway dashboard...")
         try:
@@ -179,7 +218,7 @@ def _write_and_post(stats):
                 f"{DASHBOARD_URL}/api/ingest",
                 json={"type": "team_metrics", "team_metrics": output},
                 headers={"X-API-Key": INGEST_API_KEY},
-                timeout=15,
+                timeout=20,
             )
             if resp.ok:
                 print(f"  Dashboard updated ✓")

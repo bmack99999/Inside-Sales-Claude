@@ -73,6 +73,7 @@ with app.app_context():
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
         ("sf_task_data",   "week_start",   "TEXT"),
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
+        ("team_metrics",   "monthly_snapshots", "TEXT"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
@@ -925,13 +926,15 @@ def api_ingest():
         t = data.get('team_metrics', {})
         TeamMetrics.query.delete()
         db.session.add(TeamMetrics(
-            refreshed_at = t.get('refreshed_at'),
-            month        = t.get('month'),
-            month_start  = t.get('month_start'),
-            reps         = t.get('reps', []),
+            refreshed_at      = t.get('refreshed_at'),
+            month             = t.get('month'),
+            month_start       = t.get('month_start'),
+            reps              = t.get('reps', []),
+            monthly_snapshots = t.get('monthly_snapshots', {}),
         ))
         db.session.commit()
-        return jsonify({'ok': True, 'reps': len(t.get('reps', []))})
+        return jsonify({'ok': True, 'reps': len(t.get('reps', [])),
+                        'months': len(t.get('monthly_snapshots', {}) or {})})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
 

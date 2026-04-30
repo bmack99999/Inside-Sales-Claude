@@ -96,9 +96,15 @@
 <!-- ── Team Leaderboard ───────────────────────────────────────────────────── -->
 <div class="section-divider" style="margin-top:28px">Team Leaderboard — <span id="team-month">Loading...</span></div>
 <div class="log-table-card" style="margin-bottom:24px">
-  <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center">
-    <span>MTD Performance vs Team</span>
-    <span class="sf-tasks-meta" id="team-refreshed" style="font-size:11px;color:#888"></span>
+  <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+    <span>Performance vs Team</span>
+    <div style="display:flex;align-items:center;gap:10px">
+      <label for="team-month-select" style="font-size:12px;color:#666">Month:</label>
+      <select id="team-month-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+        <option value="">Loading...</option>
+      </select>
+      <span class="sf-tasks-meta" id="team-refreshed" style="font-size:11px;color:#888"></span>
+    </div>
   </div>
   <table class="log-table" id="team-table">
     <thead>
@@ -295,6 +301,24 @@ function renderTeamTable() {
   }).join('');
 }
 
+let _teamSnapshots = null;   // dict keyed by YYYY-MM
+let _teamCurrentKey = '';
+
+function _monthLabelFromKey(key) {
+  // key = "YYYY-MM"
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function applyTeamMonth(key) {
+  if (!_teamSnapshots || !_teamSnapshots[key]) return;
+  const snap = _teamSnapshots[key];
+  _teamReps = snap.reps || [];
+  document.getElementById('team-month').textContent = snap.month_label || _monthLabelFromKey(key);
+  renderTeamTable();
+}
+
 fetch('/api/team_metrics')
   .then(r => r.json())
   .then(data => {
@@ -303,10 +327,32 @@ fetch('/api/team_metrics')
         `<tr><td colspan="10" class="table-empty">${data.error}</td></tr>`;
       return;
     }
-    document.getElementById('team-month').textContent     = data.month || '';
     document.getElementById('team-refreshed').textContent = data.refreshed_at ? 'as of ' + data.refreshed_at : '';
-    _teamReps = data.reps || [];
-    renderTeamTable();
+
+    // Build month dropdown from snapshots, default to current month.
+    const snapshots = data.monthly_snapshots || {};
+    const hasSnapshots = snapshots && typeof snapshots === 'object' && !Array.isArray(snapshots) && Object.keys(snapshots).length;
+    const select = document.getElementById('team-month-select');
+
+    if (hasSnapshots) {
+      _teamSnapshots = snapshots;
+      const keys = Object.keys(snapshots).sort().reverse();  // newest first
+      _teamCurrentKey = keys[0];
+      select.innerHTML = keys.map(k => {
+        const label = (snapshots[k] && snapshots[k].month_label) || _monthLabelFromKey(k);
+        return `<option value="${k}">${label}</option>`;
+      }).join('');
+      select.value = _teamCurrentKey;
+      applyTeamMonth(_teamCurrentKey);
+      select.addEventListener('change', () => applyTeamMonth(select.value));
+    } else {
+      // Fallback: legacy payload with only current-month reps.
+      _teamReps = data.reps || [];
+      document.getElementById('team-month').textContent = data.month || '';
+      select.innerHTML = `<option value="">${data.month || 'Current'}</option>`;
+      select.disabled = true;
+      renderTeamTable();
+    }
 
     // Wire up sortable headers
     document.querySelectorAll('.team-th-sort').forEach(th => {

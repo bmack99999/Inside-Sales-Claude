@@ -204,10 +204,11 @@ class TeamMetrics(db.Model):
     __tablename__ = 'team_metrics'
 
     id           = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    refreshed_at = db.Column(db.Text)
-    month        = db.Column(db.Text)
-    month_start  = db.Column(db.Text)
-    reps         = db.Column(JsonList)   # list of rep dicts
+    refreshed_at      = db.Column(db.Text)
+    month             = db.Column(db.Text)
+    month_start       = db.Column(db.Text)
+    reps              = db.Column(JsonList)   # list of rep dicts (current month)
+    monthly_snapshots = db.Column(JsonList)   # dict keyed by YYYY-MM → {month_label, month_start, reps}
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
