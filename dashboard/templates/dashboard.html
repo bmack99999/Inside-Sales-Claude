@@ -33,6 +33,7 @@
   </div>
   <div class="header-right">
     <button class="btn btn-secondary btn-sm" onclick="openModal('add-record-modal')">+ Add Record</button>
+    <button class="btn btn-secondary btn-sm" onclick="queueRecycledIntros()">&#9993; Queue 20 Recycled</button>
     <a href="{{ url_for('refresh') }}" class="btn btn-secondary btn-sm">&#8635; Refresh SF</a>
   </div>
 </div>
@@ -718,6 +719,27 @@ function clearNotes() {
   if (!confirm('Clear all notes?')) return;
   document.getElementById('dp-notes-pad').value = '';
   flushNotesSave();
+}
+
+function queueRecycledIntros() {
+  if (!confirm('Queue up to 20 recycled lead intro drafts?\n\nFilters: has email, no contact in last 4 business days, no callback/follow up keywords in notes.')) return;
+  fetch('/api/queue_recycled_intro', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      const sk = d.skipped || {};
+      alert(
+        'Queued ' + d.queued + ' recycled intro drafts.\n' +
+        'Eligible total: ' + d.eligible_total + '\n\n' +
+        'Skipped: ' +
+        (sk.recent_contact || 0) + ' recent contact, ' +
+        (sk.callback_keyword || 0) + ' callback keyword, ' +
+        (sk.no_email || 0) + ' no email, ' +
+        (sk.already_queued || 0) + ' already queued, ' +
+        (sk.converted || 0) + ' converted.\n\n' +
+        'Now tell Claude: "generate my email drafts"'
+      );
+    })
+    .catch(e => alert('Error: ' + e));
 }
 </script>
 {% endblock %}

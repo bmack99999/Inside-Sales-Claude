@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import phonenumbers
 from phonenumbers import timezone as _phone_tz
@@ -90,6 +90,19 @@ with app.app_context():
                 subject='',
                 body='',
             ))
+    # Seed slot 4 (Recycled Intro) — used by /api/queue_recycled_intro
+    if not EmailTemplate.query.filter_by(slot=4).first():
+        db.session.add(EmailTemplate(
+            slot=4,
+            name='Recycled Intro',
+            subject='Quick check in',
+            body=(
+                "Hi {first_name},\n\n"
+                "Wanted to circle back on the POS inquiry you put in a little while back. "
+                "Still looking, or did things move in another direction?\n\n"
+                "Happy to share a quick rundown of what we offer if it's useful."
+            ),
+        ))
     db.session.commit()
 
 SF_BASE = "https://crmcredorax.lightning.force.com"
@@ -1263,6 +1276,74 @@ def clear_email_queue():
     count = LeadEmailQueue.query.filter(LeadEmailQueue.sf_id.in_(sf_ids)).delete(synchronize_session=False)
     db.session.commit()
     return jsonify({'ok': True, 'cleared': count})
+
+
+# ── Recycled Intro Auto-Queue ────────────────────────────────────────────────
+
+_RECYCLED_SKIP_KEYWORDS = (
+    'call back', 'callback', 'reach out', 'reachout',
+    'follow up', 'followup', 'scheduled', 'supposed to',
+    'will contact', 'will call', 'reengag', 're engag',
+)
+
+
+def _business_days_ago(n):
+    """Return the date n business days (Mon–Fri) before today."""
+    d = date.today()
+    counted = 0
+    while counted < n:
+        d = d - timedelta(days=1)
+        if d.weekday() < 5:
+            counted += 1
+    return d
+
+
+@app.route('/api/queue_recycled_intro', methods=['POST'])
+def queue_recycled_intro():
+    """Pick up to 20 recycled leads with no recent contact and queue
+    Recycled Intro (slot 4) drafts for them."""
+    cutoff = _business_days_ago(4)
+    already_queued = {q.sf_id for q in LeadEmailQueue.query.all()}
+
+    eligible = []
+    skipped = {'no_email': 0, 'recent_contact': 0,
+               'callback_keyword': 0, 'already_queued': 0,
+               'converted': 0}
+    for r in RecycledLead.query.all():
+        if r.id in already_queued:
+            skipped['already_queued'] += 1
+            continue
+        if r.is_converted:
+            skipped['converted'] += 1
+            continue
+        if not r.email:
+            skipped['no_email'] += 1
+            continue
+        last = parse_date(r.last_attempt)
+        if last and last >= cutoff:
+            skipped['recent_contact'] += 1
+            continue
+        blob = ((r.notes_snippet or '') + ' ' +
+                (r.attempt_summary or '')).lower()
+        if any(kw in blob for kw in _RECYCLED_SKIP_KEYWORDS):
+            skipped['callback_keyword'] += 1
+            continue
+        eligible.append(r)
+
+    eligible.sort(key=lambda r: parse_date(r.last_attempt) or date.min)
+    picked = eligible[:20]
+
+    now = datetime.now().isoformat()
+    for r in picked:
+        db.session.add(LeadEmailQueue(sf_id=r.id, slot=4, queued_at=now))
+    db.session.commit()
+
+    return jsonify({
+        'ok': True,
+        'queued': len(picked),
+        'eligible_total': len(eligible),
+        'skipped': skipped,
+    })
 
 
 @app.route('/api/log_email_tasks', methods=['POST'])
