@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Daily Plan — SkyTab Inside Sales{% endblock %}
+{% block title %}Notes — SkyTab Inside Sales{% endblock %}
 
 {% block content %}
 
@@ -38,75 +38,6 @@
   </div>
 </div>
 
-<!-- KPI Input Form -->
-<!-- ── Activity Gauges ── -->
-<div class="gauge-row">
-<div class="gauge-card">
-  <div class="gauge-title"><span class="gauge-title-icon">📞</span> Today's Completed Activities</div>
-  <div class="gauge-wrap">
-    <svg class="gauge-svg" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
-      <!-- Zone band (faint red/yellow/green segments) -->
-      <path d="M 20 100 A 80 80 0 0 1 80 28"  fill="none" stroke="#fecaca" stroke-width="18" stroke-linecap="round" opacity=".55"/>
-      <path d="M 80 28  A 80 80 0 0 1 140 28" fill="none" stroke="#fde68a" stroke-width="18" opacity=".55"/>
-      <path d="M 140 28 A 80 80 0 0 1 180 100" fill="none" stroke="#bbf7d0" stroke-width="18" stroke-linecap="round" opacity=".55"/>
-      <!-- Neutral track on top (so unfilled area stays subtle) -->
-      <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#edf0f4" stroke-width="14" stroke-linecap="round" opacity=".9"/>
-      <!-- Colored progress arc with glow -->
-      <path id="gauge-arc" class="gauge-progress-arc"
-            d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e5e7eb" stroke-width="14" stroke-linecap="round"
-            stroke-dasharray="0 251.2" style="transition: stroke-dasharray .8s ease, stroke .5s ease; color:#e5e7eb;"/>
-      <!-- Needle -->
-      <line id="gauge-needle" x1="100" y1="100" x2="100" y2="30"
-            stroke="var(--navy)" stroke-width="2.5" stroke-linecap="round"
-            style="transform-origin: 100px 100px; transform: rotate(-90deg); transition: transform .8s ease;"/>
-      <circle cx="100" cy="100" r="6" fill="var(--navy)"/>
-      <circle cx="100" cy="100" r="2.5" fill="#fff"/>
-      <!-- Zone tick marks -->
-      <text x="16"  y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">0</text>
-      <text x="68"  y="30"  font-size="9" fill="#d97706" text-anchor="middle" font-weight="600">56</text>
-      <text x="132" y="30"  font-size="9" fill="#16a34a" text-anchor="middle" font-weight="600">75</text>
-      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">90</text>
-    </svg>
-    <div class="gauge-count-wrap">
-      <span class="gauge-count" id="gauge-count">—</span>
-      <span class="gauge-label" id="gauge-label">Loading...</span>
-      <span class="gauge-pct-badge" id="gauge-pct" style="visibility:hidden">0%</span>
-    </div>
-  </div>
-  <div class="gauge-refreshed" id="gauge-refreshed"></div>
-</div>
-
-<!-- Weekly gauge -->
-<div class="gauge-card">
-  <div class="gauge-title"><span class="gauge-title-icon">📊</span> This Week's Activities</div>
-  <div class="gauge-wrap">
-    <svg class="gauge-svg" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
-      <!-- Zone band -->
-      <path d="M 20 100 A 80 80 0 0 1 80 28"  fill="none" stroke="#fecaca" stroke-width="18" stroke-linecap="round" opacity=".55"/>
-      <path d="M 80 28  A 80 80 0 0 1 140 28" fill="none" stroke="#fde68a" stroke-width="18" opacity=".55"/>
-      <path d="M 140 28 A 80 80 0 0 1 180 100" fill="none" stroke="#bbf7d0" stroke-width="18" stroke-linecap="round" opacity=".55"/>
-      <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#edf0f4" stroke-width="14" stroke-linecap="round" opacity=".9"/>
-      <path id="gauge-arc-week" class="gauge-progress-arc"
-            d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e5e7eb" stroke-width="14" stroke-linecap="round"
-            stroke-dasharray="0 251.2" style="transition: stroke-dasharray .8s ease, stroke .5s ease; color:#e5e7eb;"/>
-      <line id="gauge-needle-week" x1="100" y1="100" x2="100" y2="30"
-            stroke="var(--navy)" stroke-width="2.5" stroke-linecap="round"
-            style="transform-origin: 100px 100px; transform: rotate(-90deg); transition: transform .8s ease;"/>
-      <circle cx="100" cy="100" r="6" fill="var(--navy)"/>
-      <circle cx="100" cy="100" r="2.5" fill="#fff"/>
-      <text x="16"  y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600">0</text>
-      <text x="186" y="115" font-size="9" fill="#9ca3af" text-anchor="middle" font-weight="600" id="gauge-week-max-label">450</text>
-    </svg>
-    <div class="gauge-count-wrap">
-      <span class="gauge-count" id="gauge-count-week">—</span>
-      <span class="gauge-label" id="gauge-label-week">Loading...</span>
-      <span class="gauge-pct-badge" id="gauge-pct-week" style="visibility:hidden">0%</span>
-      <span style="font-size:11px;color:var(--text-light);margin-top:2px;" id="gauge-week-target"></span>
-    </div>
-  </div>
-  <div class="gauge-refreshed" id="gauge-refreshed-week"></div>
-</div>
-</div><!-- end .gauge-row -->
 
 <!-- ── CALLBACKS + NOTES ROW ── -->
 <div class="dp-mid-row">
@@ -469,82 +400,6 @@
 
 {% block scripts %}
 <script>
-// ── Activity Gauges ─────────────────────────────────────────────────────────
-(function loadGauges() {
-  const ARC_LEN = 251.2; // half-circle circumference for r=80
-
-  function renderGauge(arcId, needleId, countId, labelId, count, target, maxScale, pctId) {
-    const pct      = Math.min(count / maxScale, 1);
-    const dashFill = pct * ARC_LEN;
-    const color    = count >= target        ? '#22c55e'  // green
-                   : count >= target * 0.75 ? '#f59e0b'  // yellow
-                   :                          '#ef4444'; // red
-    const arc = document.getElementById(arcId);
-    arc.style.stroke = color;
-    arc.style.color  = color;              // drives the glow drop-shadow
-    arc.setAttribute('stroke-dasharray', `${dashFill} ${ARC_LEN}`);
-    const deg = -90 + (pct * 180);
-    document.getElementById(needleId).style.transform = `rotate(${deg}deg)`;
-    document.getElementById(countId).textContent = count;
-    document.getElementById(countId).style.color  = color;
-    const label = count >= target        ? '🟢 On Track'
-                : count >= target * 0.75 ? '🟡 Getting There'
-                :                          '🔴 Keep Pushing';
-    document.getElementById(labelId).textContent = label;
-    if (pctId) {
-      const badge = document.getElementById(pctId);
-      if (badge) {
-        const goalPct = target > 0 ? Math.round((count / target) * 100) : 0;
-        badge.textContent = goalPct + '% of goal';
-        badge.style.visibility = 'visible';
-        badge.style.background = color === '#22c55e' ? 'rgba(34,197,94,0.12)'
-                               : color === '#f59e0b' ? 'rgba(245,158,11,0.14)'
-                               :                       'rgba(239,68,68,0.12)';
-        badge.style.color = color;
-      }
-    }
-  }
-
-  // Business days elapsed this week (Mon=1 … Fri=5, weekend stays at 5)
-  function bizDaysElapsed() {
-    const dow = new Date().getDay(); // 0=Sun,1=Mon…6=Sat
-    if (dow === 0) return 5; // Sunday — count full week
-    if (dow === 6) return 5; // Saturday — count full week
-    return dow;              // Mon=1, Tue=2, Wed=3, Thu=4, Fri=5
-  }
-
-  fetch('/api/tasks')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      if (!data) return;
-
-      // ── Daily gauge ── (tasks + notes)
-      const todayCount  = data.daily_count != null ? data.daily_count : (data.completed || []).length;
-      const DAILY_GOAL  = 75;
-      const DAILY_MAX   = 90;
-      renderGauge('gauge-arc', 'gauge-needle', 'gauge-count', 'gauge-label',
-                  todayCount, DAILY_GOAL, DAILY_MAX, 'gauge-pct');
-      if (data.date)
-        document.getElementById('gauge-refreshed').textContent = 'As of last SF sync · ' + data.date;
-
-      // ── Weekly gauge ──
-      const weekCount  = data.weekly_count || 0;
-      const days       = bizDaysElapsed();
-      const weekTarget = 75 * days;
-      const WEEK_MAX   = 75 * 5 * 1.2; // 450 — 20% headroom above full week
-      renderGauge('gauge-arc-week', 'gauge-needle-week', 'gauge-count-week', 'gauge-label-week',
-                  weekCount, weekTarget, WEEK_MAX, 'gauge-pct-week');
-      document.getElementById('gauge-week-target').textContent = `Target: ${weekTarget} (${days} day${days!==1?'s':''})`;
-      document.getElementById('gauge-week-max-label').textContent = '450';
-      if (data.date)
-        document.getElementById('gauge-refreshed-week').textContent = 'As of last SF sync · ' + data.date;
-    })
-    .catch(() => {
-      document.getElementById('gauge-label').textContent      = 'Could not load';
-      document.getElementById('gauge-label-week').textContent = 'Could not load';
-    });
-})();
-
 // ── SF URL Lookup (paste-to-fill callback form) ──
 let sfLookupTimer = null;
 function sfLookup(val) {

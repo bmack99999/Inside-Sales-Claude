@@ -13,9 +13,6 @@
       SkyTab Inside Sales
     </div>
     <div class="nav-links">
-      <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
-        Daily Plan
-      </a>
       <a href="{{ url_for('kpis') }}" class="nav-link {% if request.endpoint == 'kpis' %}active{% endif %}">
         KPIs
       </a>
@@ -24,6 +21,9 @@
       </a>
       <a href="{{ url_for('recycled') }}" class="nav-link {% if request.endpoint == 'recycled' %}active{% endif %}">
         Recycled
+      </a>
+      <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        Notes
       </a>
       <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}">
         ⚙ Settings

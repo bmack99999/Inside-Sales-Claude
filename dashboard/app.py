@@ -357,7 +357,7 @@ def data_staleness_days():
 
 # ── Main Dashboard ────────────────────────────────────────────────────────────
 
-@app.route('/')
+@app.route('/notes')
 def dashboard():
     skipped = get_skipped_today()
 
@@ -527,6 +527,7 @@ def my_leads():
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
+@app.route('/')
 @app.route('/kpis')
 def kpis():
     kpi_log = [k.to_dict() for k in
