@@ -48,7 +48,7 @@ from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
-                    LeadEmailQueue, UserNotes)
+                    LeadEmailQueue, UserNotes, Commission)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -525,6 +525,191 @@ def my_leads():
     )
 
 
+# ── Commissions ───────────────────────────────────────────────────────────────
+
+PAY_PERIOD_ANCHOR = date(2026, 5, 15)   # Friday — bi-weekly anchor
+
+def _bi_weekly_fridays(start, end):
+    """Return list of bi-weekly Fridays anchored to PAY_PERIOD_ANCHOR within [start, end]."""
+    diff = (start - PAY_PERIOD_ANCHOR).days
+    weeks = -(-diff // 14) if diff > 0 else diff // 14   # ceil for positive
+    cur = PAY_PERIOD_ANCHOR + timedelta(days=weeks * 14)
+    while cur < start:
+        cur += timedelta(days=14)
+    out = []
+    while cur <= end:
+        out.append(cur)
+        cur += timedelta(days=14)
+    return out
+
+def _last_payday_of_month(d):
+    """Return the last bi-weekly Friday in d.year/d.month (commission payday)."""
+    diff = (d - PAY_PERIOD_ANCHOR).days
+    weeks = diff // 14
+    cur = PAY_PERIOD_ANCHOR + timedelta(days=weeks * 14)
+    # walk forward until we leave the month, then back up one step
+    while cur.month == d.month and cur.year == d.year:
+        nxt = cur + timedelta(days=14)
+        if nxt.month != d.month or nxt.year != d.year:
+            return cur
+        cur = nxt
+    return cur - timedelta(days=14)
+
+def _next_payday_for(paid_iso):
+    """Given an ISO date string when a commission was 'paid' to Bryce in Salesforce
+    terms, return the actual payday Bryce gets the money — last bi-weekly Friday
+    in that month, or if that's already past, the last payday of next month."""
+    if not paid_iso:
+        return None
+    try:
+        d = datetime.strptime(paid_iso, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
+    candidate = _last_payday_of_month(d)
+    if candidate < d:
+        # rolled over — push to next month
+        nxt_month_start = (date(d.year + (1 if d.month == 12 else 0),
+                                1 if d.month == 12 else d.month + 1, 1))
+        candidate = _last_payday_of_month(nxt_month_start)
+    return candidate
+
+def _compute_commission_kpis(items):
+    today = date.today()
+    ytd_install = ytd_true = 0.0
+    mtd_install = mtd_true = 0.0
+    for it in items:
+        bonus_paid = it.get('install_bonus_paid_date')
+        true_paid  = it.get('true_up_paid_date')
+        bonus_amt  = float(it.get('install_bonus_amount') or 0)
+        true_amt   = float(it.get('true_up_amount') or 0)
+        if bonus_paid:
+            try:
+                bp = datetime.strptime(bonus_paid, '%Y-%m-%d').date()
+                if bp.year == today.year:
+                    ytd_install += bonus_amt
+                    if bp.month == today.month:
+                        mtd_install += bonus_amt
+            except (ValueError, TypeError):
+                pass
+        if true_paid:
+            try:
+                tp = datetime.strptime(true_paid, '%Y-%m-%d').date()
+                if tp.year == today.year:
+                    ytd_true += true_amt
+                    if tp.month == today.month:
+                        mtd_true += true_amt
+            except (ValueError, TypeError):
+                pass
+    return {
+        'mtd_install': round(mtd_install, 2),
+        'mtd_true_up': round(mtd_true, 2),
+        'mtd_total':   round(mtd_install + mtd_true, 2),
+        'ytd_install': round(ytd_install, 2),
+        'ytd_true_up': round(ytd_true, 2),
+        'ytd_total':   round(ytd_install + ytd_true, 2),
+    }
+
+def _compute_pay_periods(items):
+    """Bucket paid items by commission payday (last bi-weekly Friday of paid-date month).
+    Also produces a 'next payday' card with projected payouts."""
+    today = date.today()
+    buckets = {}   # iso payday → {'pay_date', 'install_payouts', 'true_up_payouts', 'total'}
+    def _bucket(d_iso):
+        return buckets.setdefault(d_iso, {
+            'pay_date': d_iso, 'install_payouts': [], 'true_up_payouts': [], 'total': 0.0
+        })
+    for it in items:
+        bonus_paid = it.get('install_bonus_paid_date')
+        true_paid  = it.get('true_up_paid_date')
+        bonus_amt  = float(it.get('install_bonus_amount') or 0)
+        true_amt   = float(it.get('true_up_amount') or 0)
+        if bonus_paid and bonus_amt:
+            pd = _next_payday_for(bonus_paid)
+            if pd:
+                b = _bucket(pd.isoformat())
+                b['install_payouts'].append({'account': it['account_name'], 'amount': bonus_amt})
+                b['total'] += bonus_amt
+        if true_paid and true_amt:
+            pd = _next_payday_for(true_paid)
+            if pd:
+                b = _bucket(pd.isoformat())
+                b['true_up_payouts'].append({'account': it['account_name'], 'amount': true_amt})
+                b['total'] += true_amt
+    rolled = sorted(buckets.values(), key=lambda x: x['pay_date'], reverse=True)
+    # projected next payday = last bi-weekly Friday of current month (or next if past)
+    next_pay = _last_payday_of_month(today)
+    if next_pay < today:
+        nxt_month_start = (date(today.year + (1 if today.month == 12 else 0),
+                                1 if today.month == 12 else today.month + 1, 1))
+        next_pay = _last_payday_of_month(nxt_month_start)
+    projected = {'pay_date': next_pay.isoformat(),
+                 'install_payouts': [], 'true_up_payouts': [], 'total': 0.0}
+    for it in items:
+        # already-paid bonuses landing on this payday
+        bonus_paid = it.get('install_bonus_paid_date')
+        if bonus_paid:
+            pd = _next_payday_for(bonus_paid)
+            if pd and pd == next_pay:
+                continue   # already counted in rolled bucket; skip in projected
+        # if installed but bonus not yet paid, project it onto next_pay
+        if it.get('install_date') and not bonus_paid:
+            projected['install_payouts'].append({
+                'account': it['account_name'], 'amount': Commission.INSTALL_BONUS,
+            })
+            projected['total'] += Commission.INSTALL_BONUS
+        # if true_up_amount entered but not paid, project it
+        true_paid = it.get('true_up_paid_date')
+        true_amt  = float(it.get('true_up_amount') or 0)
+        if true_amt and not true_paid:
+            projected['true_up_payouts'].append({
+                'account': it['account_name'], 'amount': true_amt,
+            })
+            projected['total'] += true_amt
+    projected['total'] = round(projected['total'], 2)
+    return {'history': rolled, 'projected': projected}
+
+
+@app.route('/commissions')
+def commissions():
+    rows  = Commission.query.order_by(Commission.close_date.desc()).all()
+    items = [r.to_dict() for r in rows]
+    kpis  = _compute_commission_kpis(items)
+    periods = _compute_pay_periods(items)
+    refreshed_at = max([i.get('extracted_at') or '' for i in items], default='')
+    return render_template('commissions.html',
+                           items=items, kpis=kpis, periods=periods,
+                           refreshed_at=refreshed_at)
+
+
+@app.route('/api/commissions_data')
+def commissions_data():
+    items = [r.to_dict() for r in Commission.query.all()]
+    return jsonify({'commissions': items})
+
+
+@app.route('/api/commissions/update', methods=['POST'])
+def commissions_update():
+    payload = request.get_json(force=True) or {}
+    opp_id = payload.get('id')
+    if not opp_id:
+        return jsonify({'error': 'missing id'}), 400
+    c = Commission.query.get(opp_id)
+    if not c:
+        return jsonify({'error': 'not found'}), 404
+    for field in ('install_date', 'install_bonus_paid_date',
+                  'true_up_amount', 'true_up_paid_date', 'mid', 'notes'):
+        if field in payload:
+            val = payload[field]
+            if field == 'true_up_amount':
+                try:
+                    val = float(val) if val not in (None, '') else 0
+                except (ValueError, TypeError):
+                    val = 0
+            setattr(c, field, val if val != '' else None)
+    db.session.commit()
+    return jsonify({'ok': True, 'item': c.to_dict()})
+
+
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
 @app.route('/')
@@ -949,6 +1134,31 @@ def api_ingest():
         db.session.commit()
         return jsonify({'ok': True, 'reps': len(t.get('reps', [])),
                         'months': len(t.get('monthly_snapshots', {}) or {})})
+
+    elif ingest_type == 'commissions':
+        # Upsert (don't delete) — preserve manually-entered fields.
+        items = data.get('commissions', [])
+        for item in items:
+            opp_id = item.get('id')
+            if not opp_id:
+                continue
+            existing = Commission.query.get(opp_id)
+            if existing:
+                existing.deal_name    = item.get('deal_name')    or existing.deal_name
+                existing.account_name = item.get('account_name') or existing.account_name
+                existing.close_date   = item.get('close_date')   or existing.close_date
+                existing.extracted_at = item.get('extracted_at') or existing.extracted_at
+            else:
+                db.session.add(Commission(
+                    id           = opp_id,
+                    deal_name    = item.get('deal_name'),
+                    account_name = item.get('account_name'),
+                    close_date   = item.get('close_date'),
+                    extracted_at = item.get('extracted_at'),
+                    true_up_amount = 0,
+                ))
+        db.session.commit()
+        return jsonify({'ok': True, 'count': len(items)})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
 

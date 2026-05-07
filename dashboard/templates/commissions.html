@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Commissions — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Commissions</h1>
+    <div class="header-meta">
+      {% if refreshed_at %}Last sync: {{ refreshed_at }}{% else %}No data yet — run extraction{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- KPI tiles -->
+<div class="boss-funnel-row" style="grid-template-columns: repeat(4, 1fr); display:grid; gap:14px;">
+  <div class="boss-card">
+    <div class="boss-card-icon">💵</div>
+    <div class="boss-card-label">MTD Install $</div>
+    <div class="boss-card-value">${{ '%.0f' % kpis.mtd_install }}</div>
+  </div>
+  <div class="boss-card">
+    <div class="boss-card-icon">📈</div>
+    <div class="boss-card-label">MTD True-Up $</div>
+    <div class="boss-card-value">${{ '%.0f' % kpis.mtd_true_up }}</div>
+  </div>
+  <div class="boss-card">
+    <div class="boss-card-icon">💰</div>
+    <div class="boss-card-label">MTD Total</div>
+    <div class="boss-card-value">${{ '%.0f' % kpis.mtd_total }}</div>
+  </div>
+  <div class="boss-card">
+    <div class="boss-card-icon">🏆</div>
+    <div class="boss-card-label">YTD Total</div>
+    <div class="boss-card-value">${{ '%.0f' % kpis.ytd_total }}</div>
+  </div>
+</div>
+
+<!-- Next Payday card -->
+<div class="log-table-card" style="margin-top:18px;">
+  <div class="log-table-title">
+    Next Payday — <strong>{{ periods.projected.pay_date }}</strong>
+    <span style="float:right;font-weight:700;color:#0a4">
+      Projected: ${{ '%.0f' % periods.projected.total }}
+    </span>
+  </div>
+  {% if periods.projected.install_payouts or periods.projected.true_up_payouts %}
+  <table class="ml-table" style="margin-top:8px">
+    <thead><tr><th>Type</th><th>Account</th><th style="text-align:right">Amount</th></tr></thead>
+    <tbody>
+      {% for p in periods.projected.install_payouts %}
+        <tr><td>Install Bonus</td><td>{{ p.account }}</td><td style="text-align:right">${{ '%.0f' % p.amount }}</td></tr>
+      {% endfor %}
+      {% for p in periods.projected.true_up_payouts %}
+        <tr><td>True-Up</td><td>{{ p.account }}</td><td style="text-align:right">${{ '%.0f' % p.amount }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="padding:8px;color:#666">No projected payouts in pipeline.</div>
+  {% endif %}
+</div>
+
+<!-- Pay Period History -->
+{% if periods.history %}
+<details style="margin-top:18px;">
+  <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:8px 0;">
+    Pay Period History ({{ periods.history|length }})
+  </summary>
+  <div class="log-table-card" style="margin-top:8px">
+    <table class="ml-table">
+      <thead><tr>
+        <th>Pay Date</th><th>Install Bonuses</th><th>True-Ups</th><th style="text-align:right">Total</th>
+      </tr></thead>
+      <tbody>
+        {% for p in periods.history %}
+          <tr>
+            <td><strong>{{ p.pay_date }}</strong></td>
+            <td>{{ p.install_payouts|length }} × ${{ '%.0f' % (p.install_payouts | sum(attribute='amount')) }}</td>
+            <td>{{ p.true_up_payouts|length }} × ${{ '%.0f' % (p.true_up_payouts | sum(attribute='amount')) }}</td>
+            <td style="text-align:right;font-weight:700">${{ '%.0f' % p.total }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+
+<!-- Filter strip -->
+<div style="margin-top:18px;display:flex;gap:10px;align-items:center;">
+  <input type="text" id="comm-search" placeholder="Search account / MID..."
+         style="flex:1;padding:8px 12px;border:1px solid #ccc;border-radius:6px;">
+  <select id="comm-status" style="padding:8px 12px;border:1px solid #ccc;border-radius:6px;">
+    <option value="">All Statuses</option>
+    <option value="closed_won">Closed Won</option>
+    <option value="awaiting_install_payout">Awaiting Install Payout</option>
+    <option value="installed">Installed</option>
+    <option value="awaiting_true_up">Awaiting True-Up</option>
+    <option value="true_up_paid">True-Up Paid</option>
+  </select>
+</div>
+
+<!-- Commissions table -->
+<div class="log-table-card" style="margin-top:12px;">
+  <table class="ml-table" id="comm-table">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Account</th>
+        <th>Close Date</th>
+        <th>MID</th>
+        <th>Install Date</th>
+        <th>$250 Paid</th>
+        <th>True-Up Due</th>
+        <th>True-Up $</th>
+        <th>True-Up Paid</th>
+        <th style="text-align:right">Total</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr data-id="{{ it.id }}" data-status="{{ it.status }}"
+          data-search="{{ (it.account_name or '')|lower }} {{ (it.mid or '')|lower }}">
+        <td>
+          {% set badge = {'closed_won':'cool','awaiting_install_payout':'warm','installed':'warm','awaiting_true_up':'warm','true_up_paid':'hot'}[it.status] %}
+          <span class="badge badge-{{ badge }}">{{ it.status.replace('_',' ').title() }}</span>
+        </td>
+        <td>
+          <strong>{{ it.account_name or it.deal_name }}</strong>
+        </td>
+        <td>{{ it.close_date or '' }}</td>
+        <td><input type="text" class="comm-edit" data-field="mid" value="{{ it.mid or '' }}" placeholder="MID"></td>
+        <td><input type="date" class="comm-edit" data-field="install_date" value="{{ it.install_date or '' }}"></td>
+        <td><input type="date" class="comm-edit" data-field="install_bonus_paid_date" value="{{ it.install_bonus_paid_date or '' }}"></td>
+        <td>{{ it.true_up_due_date or '—' }}</td>
+        <td><input type="number" step="0.01" class="comm-edit" data-field="true_up_amount" value="{{ it.true_up_amount or 0 }}" style="width:90px"></td>
+        <td><input type="date" class="comm-edit" data-field="true_up_paid_date" value="{{ it.true_up_paid_date or '' }}"></td>
+        <td style="text-align:right;font-weight:700">${{ '%.0f' % it.total_commission }}</td>
+        <td><input type="text" class="comm-edit" data-field="notes" value="{{ it.notes or '' }}" placeholder="..."></td>
+      </tr>
+      {% endfor %}
+      {% if not items %}
+      <tr><td colspan="11" style="text-align:center;color:#888;padding:24px">
+        No commissions yet — run <code>python3 scripts/extract_commissions.py</code> to backfill 2026 Closed Won deals.
+      </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .comm-edit { padding:4px 6px; border:1px solid #ddd; border-radius:4px; font-size:13px; max-width:140px; }
+  .comm-edit:focus { outline:none; border-color:#0a4; box-shadow:0 0 0 2px rgba(0,170,68,.15); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .badge-cool { background:#e7f0ff; color:#1a5fb4; }
+  .badge-warm { background:#fff3cd; color:#8a6d3b; }
+  .badge-hot  { background:#d4edda; color:#155724; }
+  .badge-cold { background:#f0f0f0; color:#666; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  // Inline edit → POST to /api/commissions/update on blur
+  document.querySelectorAll('.comm-edit').forEach(el => {
+    el.addEventListener('blur', async () => {
+      const tr = el.closest('tr');
+      const id = tr.dataset.id;
+      const field = el.dataset.field;
+      const value = el.value;
+      try {
+        const res = await fetch('/api/commissions/update', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({id, [field]: value})
+        });
+        if (!res.ok) {
+          el.style.borderColor = '#c00';
+          return;
+        }
+        el.style.borderColor = '#0a4';
+        setTimeout(() => { el.style.borderColor = ''; }, 1200);
+      } catch (e) {
+        el.style.borderColor = '#c00';
+      }
+    });
+  });
+
+  // Filter
+  const search = document.getElementById('comm-search');
+  const status = document.getElementById('comm-status');
+  function applyFilter() {
+    const q = (search.value || '').toLowerCase().trim();
+    const s = status.value;
+    document.querySelectorAll('#comm-table tbody tr[data-id]').forEach(tr => {
+      const matchSearch = !q || (tr.dataset.search || '').includes(q);
+      const matchStatus = !s || tr.dataset.status === s;
+      tr.style.display = (matchSearch && matchStatus) ? '' : 'none';
+    });
+  }
+  search.addEventListener('input', applyFilter);
+  status.addEventListener('change', applyFilter);
+})();
+</script>
+{% endblock %}

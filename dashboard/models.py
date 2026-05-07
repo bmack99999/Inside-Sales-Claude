@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -265,6 +265,90 @@ class UserNotes(db.Model):
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class Commission(db.Model):
+    """Commission tracking for Closed Won deals.
+
+    Status is *derived* in to_dict() from the date fields below — never stored.
+    Ingest is upsert (not delete+replace) so manually-entered fields survive re-syncs.
+    """
+    __tablename__ = 'commissions'
+
+    id                       = db.Column(db.Text, primary_key=True)   # SF opp_id
+    deal_name                = db.Column(db.Text)
+    account_name             = db.Column(db.Text)
+    close_date               = db.Column(db.Text)                     # ISO date — from SF
+    mid                      = db.Column(db.Text)                     # merchant ID — manual or Gmail sync
+    install_date             = db.Column(db.Text)                     # first-transaction date — manual or Gmail sync
+    install_bonus_paid_date  = db.Column(db.Text)                     # date the $250 hit paycheck — manual
+    true_up_amount           = db.Column(db.Numeric, default=0)       # manual or Sheets sync
+    true_up_paid_date        = db.Column(db.Text)                     # manual
+    notes                    = db.Column(db.Text)
+    extracted_at             = db.Column(db.Text)
+    manually_added           = db.Column(db.Boolean, default=False)
+
+    INSTALL_BONUS = 250.0
+
+    def _status(self):
+        if self.true_up_paid_date:
+            return 'true_up_paid'
+        if self.install_date:
+            try:
+                idate = datetime.strptime(self.install_date, '%Y-%m-%d').date()
+                two_months_out = idate + timedelta(days=60)
+                if date.today() >= two_months_out:
+                    return 'awaiting_true_up'
+            except (ValueError, TypeError):
+                pass
+            if self.install_bonus_paid_date:
+                return 'installed'
+            return 'awaiting_install_payout'
+        return 'closed_won'
+
+    def _true_up_due_date(self):
+        """Install date + 2 calendar months, then snapped forward to the last
+        bi-weekly Friday in that month (commission payday for that month)."""
+        if not self.install_date:
+            return None
+        try:
+            idate = datetime.strptime(self.install_date, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            return None
+        # add 2 calendar months
+        y, m = idate.year, idate.month + 2
+        while m > 12:
+            m -= 12
+            y += 1
+        try:
+            target = date(y, m, idate.day)
+        except ValueError:
+            # day overflow (e.g. Aug 31 + 2mo = Oct 31 OK, but Dec 31 + 2mo = Feb 31)
+            target = date(y, m, 28)
+        # snap to last bi-weekly Friday in target.month (anchor 2026-05-15)
+        anchor = date(2026, 5, 15)
+        diff = (target - anchor).days
+        weeks = diff // 14
+        candidate = anchor + timedelta(days=weeks * 14)
+        # candidate is on/before target; advance until next month
+        while candidate.month == target.month:
+            nxt = candidate + timedelta(days=14)
+            if nxt.month != target.month:
+                return candidate.isoformat()
+            candidate = nxt
+        # candidate already past target.month — back up
+        candidate -= timedelta(days=14)
+        return candidate.isoformat() if candidate.month == target.month else None
+
+    def to_dict(self):
+        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        d['true_up_amount'] = float(d['true_up_amount']) if d['true_up_amount'] else 0
+        d['status'] = self._status()
+        d['true_up_due_date'] = self._true_up_due_date()
+        installed_paid = self.INSTALL_BONUS if self.install_bonus_paid_date else 0
+        d['install_bonus_amount'] = installed_paid
+        d['total_commission'] = installed_paid + d['true_up_amount']
+        return d
 
 
 class LeadEmailQueue(db.Model):
