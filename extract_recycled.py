@@ -161,6 +161,20 @@ def had_real_conversation(task):
     return any(s in combined for s in CONVERSATION_SIGNALS)
 
 
+def is_contact_activity(task):
+    """True if an activity counts as real outbound contact for recency purposes.
+
+    Counts completed Call/Email tasks and logged notes. Excludes the mandated
+    OPEN "Follow Up" cadence placeholder tasks (management requires one always be
+    set, so they don't mean a rep actually worked the lead) and completed ops/admin
+    tasks like "Follow Up With Merchant to Close Case" / "Account Closure Checklist".
+    """
+    if task.get('TaskSubtype') == 'Note':
+        return True
+    return (task.get('Status') == 'Completed'
+            and task.get('TaskSubtype') in ('Call', 'Email', 'ListEmail'))
+
+
 # ─── Main Extraction ─────────────────────────────────────────────────────────
 
 def main():
@@ -368,6 +382,18 @@ def main():
             None,
         )
 
+        # last_contact_date = recency signal for outreach targeting. Unlike
+        # last_attempt, this counts ONLY real completed contact (Call/Email) and
+        # logged notes — never the open "Follow Up" cadence placeholders or
+        # completed ops/admin tasks. Prevents a generic placeholder dated today
+        # from making an untouched lead look recently worked.
+        last_contact_date = next(
+            (t.get('ActivityDate') for t in all_lead_activities
+             if t.get('ActivityDate') and t['ActivityDate'] <= today_str
+             and is_contact_activity(t)),
+            None,
+        )
+
         summaries = []
         for t in all_lead_activities[:5]:
             subj = (t.get('Subject') or '')[:40]
@@ -397,6 +423,7 @@ def main():
             'lead_source': lead.get('LeadSource'),
             'lead_created': lead.get('Lead_Created_Date__c'),
             'last_activity_date': last_attempt or lead.get('LastActivityDate'),
+            'last_contact_date': last_contact_date,
             'is_converted': lead.get('IsConverted', False),
             'converted_opp_id': lead.get('ConvertedOpportunityId'),
             'category': category,
