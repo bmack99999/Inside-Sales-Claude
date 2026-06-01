@@ -454,12 +454,17 @@ def main():
         'had_conversation': counts['had_conversation'],
     }
 
-    # Post to dashboard
+    # Post to dashboard. last_contact_date is a local-only field consumed by the
+    # recycled-opp-targeter skill (which reads recycled_leads.json directly); the
+    # RecycledLead model has no such column, so strip it before POSTing to avoid a
+    # RecycledLead(**item) TypeError. It still lands in the saved JSON below.
+    post_leads = [{k: v for k, v in l.items() if k != 'last_contact_date'}
+                  for l in output_leads]
     print(f"\n[Posting to dashboard at {DASHBOARD_URL}...]")
     try:
         resp = requests.post(
             f"{DASHBOARD_URL}/api/ingest",
-            json={"type": "recycled", "leads": output_leads, "refresh_info": refresh_info},
+            json={"type": "recycled", "leads": post_leads, "refresh_info": refresh_info},
             headers={"X-API-Key": INGEST_API_KEY},
             timeout=60
         )
