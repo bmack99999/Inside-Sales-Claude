@@ -322,6 +322,11 @@ def main():
     print("\n[3/3] Categorizing leads...")
     output_leads = []
 
+    # Recency is measured from the most recent activity dated on or before today.
+    # Management requires a future follow-up task always be set, so future-dated
+    # tasks are meaningless for "when was this lead last actually worked."
+    today_str = date.today().isoformat()
+
     for lead in leads_raw:
         lid = lead['Id']
         lead_tasks  = tasks_by_lead.get(lid, [])
@@ -352,7 +357,16 @@ def main():
 
         # Build attempt summary
         attempt_count = len(all_lead_activities)
-        last_attempt = all_lead_activities[0].get('ActivityDate') if all_lead_activities else None
+
+        # last_attempt = most recent activity dated on or before today.
+        # Future-dated tasks are ignored here (they're a mandated formality, not
+        # real contact), but they remain in attempt_summary below so no-touch
+        # signals like "Demo scheduled" are still surfaced.
+        last_attempt = next(
+            (t.get('ActivityDate') for t in all_lead_activities
+             if t.get('ActivityDate') and t['ActivityDate'] <= today_str),
+            None,
+        )
 
         summaries = []
         for t in all_lead_activities[:5]:
