@@ -26,6 +26,7 @@ import requests
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 SF_ALIAS       = "shift4"
+MY_EMAIL       = "bryce.mack@shift4.com"  # Bryce — to detect emails HE sent on an opp
 DASHBOARD_DATA = os.path.join(os.path.dirname(__file__), "dashboard", "data")
 DASHBOARD_URL  = os.environ.get("DASHBOARD_URL", "http://localhost:5000")
 INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "dev-ingest-key")
@@ -267,7 +268,7 @@ def main():
         batch = lead_ids[i:i + batch_size]
         id_list = "','".join(batch)
         tasks = run_soql(
-            f"SELECT Id, WhoId, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status "
+            f"SELECT Id, WhoId, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status, Owner.Email "
             f"FROM Task WHERE WhoId IN ('{id_list}') "
             f"ORDER BY ActivityDate DESC"
         )
@@ -284,7 +285,7 @@ def main():
             batch = active_opp_ids[i:i + batch_size]
             id_list = "','".join(batch)
             opp_tasks = run_soql(
-                f"SELECT Id, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status "
+                f"SELECT Id, WhatId, Subject, Description, ActivityDate, TaskSubtype, Status, Owner.Email "
                 f"FROM Task WHERE WhatId IN ('{id_list}') "
                 f"ORDER BY ActivityDate DESC"
             )
@@ -452,6 +453,17 @@ def main():
 
         owner = opp_owner.get(lead.get('ConvertedOpportunityId'), {})
 
+        # Emails Bryce himself sent on this lead/opp: completed Email tasks owned
+        # by him, on or before today. Drives the "Emailed" column on Opp Targets.
+        my_email_dates = [
+            t.get('ActivityDate') for t in all_lead_activities
+            if t.get('TaskSubtype') == 'Email'
+            and (t.get('Owner') or {}).get('Email', '').lower() == MY_EMAIL
+            and t.get('ActivityDate') and t['ActivityDate'] <= today_str
+        ]
+        my_email_date  = max(my_email_dates) if my_email_dates else None
+        my_email_count = len(my_email_dates)
+
         output_leads.append({
             'id': lid,
             'name': lead.get('Name'),
@@ -474,6 +486,8 @@ def main():
             'opp_owner_email': owner.get('email'),
             'opp_owner_name': owner.get('name'),
             'no_touch': no_touch,
+            'my_email_date': my_email_date,
+            'my_email_count': my_email_count,
         })
 
     # Sort: no_contact by most recent lead created, no_activity same

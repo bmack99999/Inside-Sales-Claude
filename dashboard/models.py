@@ -154,6 +154,8 @@ class RecycledLead(db.Model):
     opp_owner_email    = db.Column(db.Text)  # owner of the converted opp (for excluding Bryce's own)
     opp_owner_name     = db.Column(db.Text)  # display name of the opp owner
     no_touch           = db.Column(db.Boolean, default=False)  # DNC / demo set / appt set etc. (full-text scan)
+    my_email_date      = db.Column(db.Text)  # most recent date Bryce emailed this lead/opp (his Email task)
+    my_email_count     = db.Column(db.Integer, default=0)  # how many emails Bryce has sent
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

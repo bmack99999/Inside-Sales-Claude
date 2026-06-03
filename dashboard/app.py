@@ -72,6 +72,8 @@ with app.app_context():
         ("recycled_leads", "opp_owner_email",   "TEXT"),
         ("recycled_leads", "opp_owner_name",    "TEXT"),
         ("recycled_leads", "no_touch",          "BOOLEAN DEFAULT FALSE"),
+        ("recycled_leads", "my_email_date",     "TEXT"),
+        ("recycled_leads", "my_email_count",    "INTEGER DEFAULT 0"),
         ("opportunities",  "created_date",  "TEXT"),
         ("opportunities",  "email",         "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
@@ -1060,6 +1062,9 @@ def opp_targets():
             d['days_since_contact'] = None
         d['opp_url'] = f"{SF_BASE}/{r.converted_opp_id}"
         d['note']    = notes.get(r.id, '')
+        # Friendly "emailed" label, e.g. "Jun 2" (from the date Bryce emailed them)
+        emd = parse_date(d.get('my_email_date'))
+        d['emailed_display'] = emd.strftime('%b %-d') if emd else None
         leads.append(d)
 
     # Most recently contacted first (active campaign on top); unknown dates last.

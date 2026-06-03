@@ -32,6 +32,7 @@
         <th>Email</th>
         <th class="th-tz">TZ</th>
         <th>Days since contact</th>
+        <th>Emailed</th>
         <th>Attempts</th>
         <th>Owner</th>
         <th class="ot-notes-th">Notes</th>
@@ -59,6 +60,11 @@
         </td>
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td>{% if l.days_since_contact is not none %}{{ l.days_since_contact }}d{% else %}—{% endif %}</td>
+        <td class="ot-emailed-cell">
+          {% if l.emailed_display %}
+            <span class="ot-emailed">✓ {{ l.emailed_display }}</span>{% if l.my_email_count and l.my_email_count > 1 %}<span class="ot-email-badge">x{{ l.my_email_count }}</span>{% endif %}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
         <td>{{ l.attempt_count or 0 }}</td>
         <td>{{ l.opp_owner_name or '—' }}</td>
         <td class="ot-notes-cell">
@@ -102,6 +108,11 @@
   }
   .ot-note:focus { outline: none; border-color: #1763d6; box-shadow: 0 0 0 2px rgba(23,99,214,.15); }
   .ot-note-status { font-size: 11px; color: #66BB6A; margin-left: 2px; }
+  .ot-emailed { color: #2E7D32; font-weight: 600; white-space: nowrap; }
+  .ot-email-badge {
+    display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px;
+    background: #2E7D32; color: #fff; font-size: 10px; font-weight: 700;
+  }
 </style>
 
 {% endblock %}
