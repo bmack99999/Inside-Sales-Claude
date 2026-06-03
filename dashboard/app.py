@@ -1048,7 +1048,10 @@ def opp_targets():
     q = (RecycledLead.query
          .filter(RecycledLead.is_converted == True,
                  RecycledLead.converted_opp_id != None,
-                 db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None),
+                 # not no_touch — UNLESS Bryce already emailed them (keep his
+                 # outreach visible for reply tracking even if flagged no_touch)
+                 db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None,
+                        RecycledLead.my_email_count > 0),
                  db.or_(RecycledLead.opp_owner_email == None,
                         db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL)))
 

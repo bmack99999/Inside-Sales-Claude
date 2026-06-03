@@ -50,6 +50,7 @@
         <td>{{ loop.index }}</td>
         <td class="recycled-name">
           <a href="{{ l.opp_url }}" target="_blank" class="recycled-name-link">{{ l.company or '—' }}</a>
+          {% if l.no_touch %}<span class="ot-notouch-badge" title="Flagged no-touch (do not call / demo set, etc.) — showing because you emailed them">no touch</span>{% endif %}
           <div class="ot-contact-sub">{{ l.name or '' }}</div>
         </td>
         <td>
@@ -112,6 +113,11 @@
   .ot-email-badge {
     display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px;
     background: #2E7D32; color: #fff; font-size: 10px; font-weight: 700;
+  }
+  .ot-notouch-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px;
+    background: #fdecea; color: #b71c1c; border: 1px solid #f5c6c2;
+    font-size: 10px; font-weight: 700; vertical-align: middle;
   }
 </style>
 
