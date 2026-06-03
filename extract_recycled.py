@@ -53,6 +53,17 @@ CONVERSATION_SIGNALS = [
     'already has', 'under contract', 'switching', 'considering',
 ]
 
+# "No-touch" signals: team norms say don't poach a lead with these in its notes.
+# Scanned against the FULL activity text (not the truncated summary/snippet) so
+# phrases like "do not call" buried mid-note are still caught.
+NO_TOUCH_KEYWORDS = [
+    'do not call', 'dnc', 'dnd', 'do not contact', 'do not reach out',
+    'demo scheduled', 'demo set', 'demo booked',
+    'appointment scheduled', 'appointment set', 'appt set', 'appt scheduled',
+    'call scheduled', 'call set', 'follow up scheduled',
+    'in contact', 'working deal', 'in process',
+]
+
 
 # ─── Timezone lookup ──────────────────────────────────────────────────────────
 
@@ -230,6 +241,21 @@ def main():
                    if l.get('IsConverted') and l.get('ConvertedOpportunityId')}
     opp_to_lead = {v: k for k, v in lead_to_opp.items()}
     active_opp_ids = list(lead_to_opp.values())
+
+    # Fetch the owner of each converted opp (used by the dashboard Opp Targets
+    # tracker to exclude Bryce's own opps and to display who originally worked it)
+    opp_owner = {}   # opp_id -> {'email': ..., 'name': ...}
+    if active_opp_ids:
+        for i in range(0, len(active_opp_ids), 200):
+            batch = active_opp_ids[i:i + 200]
+            id_list = "','".join(batch)
+            owners = run_soql(
+                f"SELECT Id, Owner.Name, Owner.Email FROM Opportunity "
+                f"WHERE Id IN ('{id_list}')"
+            )
+            for o in owners:
+                ow = o.get('Owner') or {}
+                opp_owner[o['Id']] = {'email': ow.get('Email'), 'name': ow.get('Name')}
 
     # Step 2: Pull all tasks in batches (leads + opp activities)
     print("\n[2/3] Querying activities (batched)...")
@@ -413,6 +439,19 @@ def main():
         if not notes_snippet and lead.get('Description'):
             notes_snippet = lead['Description'][:100]
 
+        # no_touch: scan the FULL activity text (subjects + full descriptions +
+        # note previews + lead Description) for team no-touch signals. Done on the
+        # untruncated text so phrases buried mid-note ("...still working do not
+        # call please") are caught — the truncated summary/snippet would miss them.
+        full_text_parts = [lead.get('Description') or '']
+        for t in all_lead_activities:
+            full_text_parts.append(t.get('Subject') or '')
+            full_text_parts.append(t.get('Description') or '')
+        full_text = ' '.join(full_text_parts).lower()
+        no_touch = any(kw in full_text for kw in NO_TOUCH_KEYWORDS)
+
+        owner = opp_owner.get(lead.get('ConvertedOpportunityId'), {})
+
         output_leads.append({
             'id': lid,
             'name': lead.get('Name'),
@@ -432,6 +471,9 @@ def main():
             'attempt_summary': attempt_summary,
             'notes_snippet': notes_snippet,
             'timezone': get_timezone(lead.get('Phone')),
+            'opp_owner_email': owner.get('email'),
+            'opp_owner_name': owner.get('name'),
+            'no_touch': no_touch,
         })
 
     # Sort: no_contact by most recent lead created, no_activity same
@@ -454,17 +496,14 @@ def main():
         'had_conversation': counts['had_conversation'],
     }
 
-    # Post to dashboard. last_contact_date is a local-only field consumed by the
-    # recycled-opp-targeter skill (which reads recycled_leads.json directly); the
-    # RecycledLead model has no such column, so strip it before POSTing to avoid a
-    # RecycledLead(**item) TypeError. It still lands in the saved JSON below.
-    post_leads = [{k: v for k, v in l.items() if k != 'last_contact_date'}
-                  for l in output_leads]
+    # Post to dashboard. The RecycledLead model now has columns for every field
+    # below (last_contact_date, opp_owner_email, opp_owner_name, no_touch), so the
+    # full payload is sent as-is — the dashboard Opp Targets page reads them.
     print(f"\n[Posting to dashboard at {DASHBOARD_URL}...]")
     try:
         resp = requests.post(
             f"{DASHBOARD_URL}/api/ingest",
-            json={"type": "recycled", "leads": post_leads, "refresh_info": refresh_info},
+            json={"type": "recycled", "leads": output_leads, "refresh_info": refresh_info},
             headers={"X-API-Key": INGEST_API_KEY},
             timeout=60
         )

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Opp Targets — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Opp Targets</h1>
+    <div class="header-meta">
+      Campaign reply tracker &nbsp;·&nbsp; {{ count }} workable converted opps
+      &nbsp;·&nbsp; excludes your own opps and "do not call"
+    </div>
+  </div>
+  <div class="header-right" style="display:flex;align-items:center;gap:10px;">
+    <div class="recycled-search-box">
+      <input type="text" id="ot-search" placeholder="&#128269; Search name, company, owner..."
+             oninput="filterRows()">
+    </div>
+    <span class="recycled-filter-count" id="ot-count">Showing {{ count }}</span>
+  </div>
+</div>
+
+{% if leads %}
+<div class="recycled-table-wrap">
+  <table class="recycled-table ml-table">
+    <thead>
+      <tr>
+        <th class="color-th"></th>
+        <th>#</th>
+        <th>Company / Contact</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th class="th-tz">TZ</th>
+        <th>Days since contact</th>
+        <th>Attempts</th>
+        <th>Owner</th>
+        <th class="ot-notes-th">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in leads %}
+      <tr class="recycled-row ml-row {% if l.color %}row-color-{{ l.color }}{% endif %}"
+          data-search="{{ (l.name or '')|lower }} {{ (l.company or '')|lower }} {{ (l.opp_owner_name or '')|lower }} {{ (l.email or '')|lower }}">
+        <td class="color-cell">
+          <div class="color-trigger {% if l.color %}cp-{{ l.color }}{% endif %}"
+               data-sf-id="{{ l.id }}"
+               onclick="openColorPicker(this)" title="Set color"></div>
+        </td>
+        <td>{{ loop.index }}</td>
+        <td class="recycled-name">
+          <a href="{{ l.opp_url }}" target="_blank" class="recycled-name-link">{{ l.company or '—' }}</a>
+          <div class="ot-contact-sub">{{ l.name or '' }}</div>
+        </td>
+        <td>
+          {% if l.phone %}<a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if l.email %}<a href="mailto:{{ l.email }}" class="recycled-name-link">{{ l.email }}</a>{% else %}—{% endif %}
+        </td>
+        <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
+        <td>{% if l.days_since_contact is not none %}{{ l.days_since_contact }}d{% else %}—{% endif %}</td>
+        <td>{{ l.attempt_count or 0 }}</td>
+        <td>{{ l.opp_owner_name or '—' }}</td>
+        <td class="ot-notes-cell">
+          <textarea class="ot-note" data-sf-id="{{ l.id }}" rows="1"
+                    placeholder="Add a note..."
+                    oninput="queueNoteSave(this)"
+                    onblur="saveNote(this)">{{ l.note or '' }}</textarea>
+          <span class="ot-note-status" data-for="{{ l.id }}"></span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">&#9851;</div>
+  <h2>No opp targets loaded</h2>
+  <p>Run the recycled extraction to populate converted-to-opp leads.</p>
+</div>
+{% endif %}
+
+<!-- Shared color picker popup -->
+<div id="colorPickerPopup" style="display:none;">
+  <div class="cp-swatch cp-yellow"      data-color="yellow"      title="Yellow"></div>
+  <div class="cp-swatch cp-red"         data-color="red"         title="Red"></div>
+  <div class="cp-swatch cp-blue"        data-color="blue"        title="Blue"></div>
+  <div class="cp-swatch cp-light_green" data-color="light_green" title="Light Green"></div>
+  <div class="cp-swatch cp-dark_green"  data-color="dark_green"  title="Dark Green"></div>
+  <div class="cp-swatch cp-purple"      data-color="purple"      title="Purple"></div>
+  <div class="cp-swatch cp-clear"       data-color=""            title="Clear">✕</div>
+</div>
+
+<style>
+  .ot-notes-th, .ot-notes-cell { width: 280px; }
+  .ot-contact-sub { font-size: 12px; color: #8a97ad; margin-top: 2px; }
+  .ot-note {
+    width: 100%; min-height: 30px; resize: vertical; box-sizing: border-box;
+    border: 1px solid #d9e0ea; border-radius: 6px; padding: 6px 8px;
+    font: inherit; font-size: 13px; color: #1a2b4a; background: #fff;
+  }
+  .ot-note:focus { outline: none; border-color: #1763d6; box-shadow: 0 0 0 2px rgba(23,99,214,.15); }
+  .ot-note-status { font-size: 11px; color: #66BB6A; margin-left: 2px; }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Search filter ─────────────────────────────────────────────────────────────
+function filterRows() {
+  const q = (document.getElementById('ot-search').value || '').toLowerCase().trim();
+  let shown = 0;
+  document.querySelectorAll('tbody tr').forEach(row => {
+    const hay = row.dataset.search || '';
+    const match = !q || hay.includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  document.getElementById('ot-count').textContent = 'Showing ' + shown;
+}
+
+// ── Per-lead notes (debounced autosave) ─────────────────────────────────────────
+const noteTimers = {};
+function queueNoteSave(el) {
+  const id = el.dataset.sfId;
+  clearTimeout(noteTimers[id]);
+  noteTimers[id] = setTimeout(() => saveNote(el), 800);
+}
+function saveNote(el) {
+  const id = el.dataset.sfId;
+  clearTimeout(noteTimers[id]);
+  const status = document.querySelector('.ot-note-status[data-for="' + id + '"]');
+  fetch('/api/lead_note/' + encodeURIComponent(id), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content: el.value})
+  }).then(r => {
+    if (r.ok) {
+      if (status) { status.textContent = '✓ saved'; setTimeout(() => status.textContent = '', 1500); }
+    } else { console.error('Note save failed', r.status, id); }
+  }).catch(e => console.error('Note save error', e, id));
+}
+
+// ── Color picker (mirrors recycled.html) ────────────────────────────────────────
+const cpPopup = document.getElementById('colorPickerPopup');
+let activeTrigger = null;
+
+function openColorPicker(trigger) {
+  if (activeTrigger === trigger && cpPopup.style.display !== 'none') {
+    closeColorPicker(); return;
+  }
+  activeTrigger = trigger;
+  const rect = trigger.getBoundingClientRect();
+  cpPopup.style.display = 'flex';
+  const popW = cpPopup.offsetWidth || 116;
+  let left = rect.left + rect.width / 2 - popW / 2;
+  let top  = rect.bottom + 6;
+  left = Math.max(4, Math.min(left, window.innerWidth - popW - 4));
+  cpPopup.style.left = left + 'px';
+  cpPopup.style.top  = top + 'px';
+}
+
+function closeColorPicker() {
+  cpPopup.style.display = 'none';
+  activeTrigger = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#colorPickerPopup') && !e.target.classList.contains('color-trigger')) {
+    closeColorPicker();
+  }
+});
+
+cpPopup.querySelectorAll('.cp-swatch').forEach(swatch => {
+  swatch.addEventListener('click', function() {
+    if (!activeTrigger) return;
+    const color = this.dataset.color;
+    const sfId  = activeTrigger.dataset.sfId;
+    const row   = activeTrigger.closest('.recycled-row');
+
+    activeTrigger.className = 'color-trigger' + (color ? ' cp-' + color : '');
+    row.className = row.className.replace(/\brow-color-\S+/g, '').trim();
+    if (color) row.classList.add('row-color-' + color);
+
+    closeColorPicker();
+
+    fetch('/api/lead_color', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sf_id: sfId, color: color})
+    }).then(r => {
+      if (!r.ok) console.error('Color save failed:', r.status, sfId, color);
+    }).catch(e => console.error('Color save error:', e, sfId, color));
+  });
+});
+</script>
+{% endblock %}

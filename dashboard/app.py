@@ -46,7 +46,7 @@ from dateutil import parser as dateutil_parser
 
 from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
-                    RecycledLead, RefreshLog, SkippedToday, LeadColor,
+                    RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission)
 
@@ -68,6 +68,10 @@ with app.app_context():
         ("recycled_leads", "color",         "TEXT"),
         ("recycled_leads", "timezone",      "TEXT"),
         ("recycled_leads", "notes_snippet", "TEXT"),
+        ("recycled_leads", "last_contact_date", "TEXT"),
+        ("recycled_leads", "opp_owner_email",   "TEXT"),
+        ("recycled_leads", "opp_owner_name",    "TEXT"),
+        ("recycled_leads", "no_touch",          "BOOLEAN DEFAULT FALSE"),
         ("opportunities",  "created_date",  "TEXT"),
         ("opportunities",  "email",         "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
@@ -1028,6 +1032,46 @@ def recycled():
     )
 
 
+# Bryce's own opps are excluded from the reply tracker (other reps' leads are fair game)
+MY_OPP_OWNER_EMAIL = 'bryce.mack@shift4.com'
+
+
+@app.route('/opp_targets')
+def opp_targets():
+    """Campaign reply tracker: workable converted-to-opp recycled leads.
+    Cohort = converted + has opp + not owned by Bryce + not no_touch.
+    No 10-day recency filter here (unlike the targeter skill) so leads stay
+    visible after Bryce emails them, for tracking replies. Colors + per-lead
+    notes persist via LeadColor / LeadNote."""
+    q = (RecycledLead.query
+         .filter(RecycledLead.is_converted == True,
+                 RecycledLead.converted_opp_id != None,
+                 db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None),
+                 db.or_(RecycledLead.opp_owner_email == None,
+                        db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL)))
+
+    notes = {n.sf_id: n.content for n in LeadNote.query.all()}
+
+    leads = []
+    for r in q.all():
+        d = r.to_dict()
+        d['days_since_contact'] = days_since(d.get('last_contact_date'))
+        if d['days_since_contact'] == 9999:
+            d['days_since_contact'] = None
+        d['opp_url'] = f"{SF_BASE}/{r.converted_opp_id}"
+        d['note']    = notes.get(r.id, '')
+        leads.append(d)
+
+    # Most recently contacted first (active campaign on top); unknown dates last.
+    leads.sort(key=lambda x: x.get('last_contact_date') or '', reverse=True)
+
+    return render_template('opp_targets.html',
+        leads=leads,
+        count=len(leads),
+        sf_base=SF_BASE,
+    )
+
+
 # ── API: Ingest (called by extraction scripts) ────────────────────────────────
 
 @app.route('/api/ingest', methods=['POST'])
@@ -1618,6 +1662,31 @@ def save_notes(note_key):
         db.session.add(row)
     row.content    = data.get('content', '')
     row.updated_at = datetime.now().isoformat()
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ── Per-lead notes (Opp Targets reply tracker) ────────────────────────────────
+
+@app.route('/api/lead_note/<sf_id>')
+def get_lead_note(sf_id):
+    row = LeadNote.query.get(sf_id)
+    return jsonify({'content': row.content if row else ''})
+
+
+@app.route('/api/lead_note/<sf_id>', methods=['POST'])
+def save_lead_note(sf_id):
+    data = request.get_json() or {}
+    content = data.get('content', '')
+    row = LeadNote.query.get(sf_id)
+    if content:
+        if not row:
+            row = LeadNote(sf_id=sf_id, content='')
+            db.session.add(row)
+        row.content    = content
+        row.updated_at = datetime.now().isoformat()
+    elif row:
+        db.session.delete(row)  # empty note clears the record
     db.session.commit()
     return jsonify({'ok': True})
 

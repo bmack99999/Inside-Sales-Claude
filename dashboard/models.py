@@ -150,9 +150,27 @@ class RecycledLead(db.Model):
     extracted_at       = db.Column(db.Text)
     color              = db.Column(db.Text)  # yellow | red | blue | light_green | dark_green | purple
     timezone           = db.Column(db.Text)  # ET | CT | MT | PT | AK | HI
+    last_contact_date  = db.Column(db.Text)  # most recent real completed contact (Call/Email/note), <= today
+    opp_owner_email    = db.Column(db.Text)  # owner of the converted opp (for excluding Bryce's own)
+    opp_owner_name     = db.Column(db.Text)  # display name of the opp owner
+    no_touch           = db.Column(db.Boolean, default=False)  # DNC / demo set / appt set etc. (full-text scan)
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class LeadNote(db.Model):
+    """Persists per-lead freeform notes across re-scans, keyed by Salesforce ID.
+    Used by the Opp Targets reply tracker; survives recycled re-extraction since
+    it is never wiped (the page joins it back in by sf_id)."""
+    __tablename__ = 'lead_notes'
+
+    sf_id      = db.Column(db.Text, primary_key=True)
+    content    = db.Column(db.Text, default='')
+    updated_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {'sf_id': self.sf_id, 'content': self.content, 'updated_at': self.updated_at}
 
 
 class LeadColor(db.Model):
