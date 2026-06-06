@@ -88,9 +88,17 @@
 </div>
 
 <!-- Monthly trend chart -->
-<div class="chart-card" style="margin-bottom:20px;">
-  <div class="chart-title">Monthly Trend — Leads · Converted · Closed Won</div>
-  <canvas id="bossChart" height="80"></canvas>
+<div class="chart-card" style="margin-bottom:20px;padding:24px 28px 20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+    <div>
+      <div class="chart-title" style="margin-bottom:2px;">Monthly Trend</div>
+      <div style="font-size:12px;color:#9ca3af;letter-spacing:.03em;">Leads · Converted · Closed Won</div>
+    </div>
+    <div id="bossChartLegend" style="display:flex;gap:20px;align-items:center;"></div>
+  </div>
+  <div style="position:relative;">
+    <canvas id="bossChart" height="90"></canvas>
+  </div>
 </div>
 
 <!-- ── Team Leaderboard ───────────────────────────────────────────────────── -->
@@ -197,28 +205,138 @@ function renderBossMetrics() {
 }
 
 function renderBossChart(monthly) {
-  const labels   = monthly.map(m => m.month);
-  const leads    = monthly.map(m => m.leads      || 0);
-  const opps     = monthly.map(m => m.converted  || 0);
-  const won      = monthly.map(m => m.closed_won || 0);
+  const labels = monthly.map(m => m.month);
+  const leads  = monthly.map(m => m.leads      || 0);
+  const opps   = monthly.map(m => m.converted  || 0);
+  const won    = monthly.map(m => m.closed_won || 0);
+
   const ctx = document.getElementById('bossChart').getContext('2d');
+
+  // Gradient fill for Converted line
+  const gradConv = ctx.createLinearGradient(0, 0, 0, 320);
+  gradConv.addColorStop(0, 'rgba(245,158,11,.22)');
+  gradConv.addColorStop(1, 'rgba(245,158,11,0)');
+
+  // Gradient fill for Closed Won line
+  const gradWon = ctx.createLinearGradient(0, 0, 0, 320);
+  gradWon.addColorStop(0, 'rgba(16,185,129,.22)');
+  gradWon.addColorStop(1, 'rgba(16,185,129,0)');
+
   if (bossChart) bossChart.destroy();
   bossChart = new Chart(ctx, {
-    type: 'bar',
     data: {
       labels,
       datasets: [
-        { label: 'Leads',        data: leads, backgroundColor: 'rgba(30,64,175,.7)',  borderRadius: 4 },
-        { label: 'Converted',    data: opps,  backgroundColor: 'rgba(245,158,11,.75)', borderRadius: 4 },
-        { label: 'Closed Won',   data: won,   backgroundColor: 'rgba(16,185,129,.8)', borderRadius: 4 },
+        {
+          type: 'bar',
+          label: 'Leads',
+          data: leads,
+          backgroundColor: 'rgba(30,64,175,.15)',
+          borderColor: 'rgba(30,64,175,.35)',
+          borderWidth: 1,
+          borderRadius: 5,
+          borderSkipped: 'bottom',
+          yAxisID: 'y',
+          order: 3,
+        },
+        {
+          type: 'line',
+          label: 'Converted',
+          data: opps,
+          borderColor: 'rgba(245,158,11,1)',
+          backgroundColor: gradConv,
+          borderWidth: 2.5,
+          pointBackgroundColor: 'rgba(245,158,11,1)',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          type: 'line',
+          label: 'Closed Won',
+          data: won,
+          borderColor: 'rgba(16,185,129,1)',
+          backgroundColor: gradWon,
+          borderWidth: 2.5,
+          pointBackgroundColor: 'rgba(16,185,129,1)',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y',
+          order: 2,
+        },
       ]
     },
     options: {
       responsive: true,
-      plugins: { legend: { position: 'top' } },
-      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f0f0' } } }
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,.92)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#94a3b8',
+          padding: 12,
+          borderColor: 'rgba(255,255,255,.08)',
+          borderWidth: 1,
+          cornerRadius: 8,
+          titleFont: { size: 12, weight: '600' },
+          bodyFont: { size: 12 },
+          callbacks: {
+            title: items => items[0].label,
+            label: item => {
+              const icon = item.datasetIndex === 0 ? '  Leads' : item.datasetIndex === 1 ? '  Converted' : '  Closed Won';
+              return `${icon}   ${item.parsed.y}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: '#9ca3af', font: { size: 11 } }
+        },
+        y: {
+          beginAtZero: true,
+          border: { display: false },
+          grid: { color: 'rgba(0,0,0,.05)', drawTicks: false },
+          ticks: {
+            color: '#9ca3af',
+            font: { size: 11 },
+            padding: 8,
+            stepSize: Math.ceil(Math.max(...leads, 1) / 5),
+          }
+        }
+      }
     }
   });
+
+  // Custom legend
+  const legendEl = document.getElementById('bossChartLegend');
+  const items = [
+    { label: 'Leads',      color: 'rgba(30,64,175,.6)',   type: 'bar' },
+    { label: 'Converted',  color: 'rgba(245,158,11,1)',   type: 'line' },
+    { label: 'Closed Won', color: 'rgba(16,185,129,1)',   type: 'line' },
+  ];
+  legendEl.innerHTML = items.map(i => `
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;">
+      ${i.type === 'bar'
+        ? `<span style="display:inline-block;width:12px;height:12px;background:${i.color};border-radius:2px;"></span>`
+        : `<span style="display:inline-block;width:20px;height:2.5px;background:${i.color};border-radius:2px;position:relative;">
+             <span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:7px;height:7px;background:${i.color};border:2px solid #fff;border-radius:50%;display:inline-block;"></span>
+           </span>`
+      }
+      <span>${i.label}</span>
+    </div>`).join('');
 }
 
 fetch('/api/metrics')
