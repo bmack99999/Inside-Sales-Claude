@@ -1041,19 +1041,26 @@ MY_OPP_OWNER_EMAIL = 'bryce.mack@shift4.com'
 @app.route('/opp_targets')
 def opp_targets():
     """Campaign reply tracker: workable converted-to-opp recycled leads.
-    Cohort = converted + has opp + not owned by Bryce + not no_touch.
-    No 10-day recency filter here (unlike the targeter skill) so leads stay
-    visible after Bryce emails them, for tracking replies. Colors + per-lead
-    notes persist via LeadColor / LeadNote."""
+    Cohort = converted + has opp + not owned by Bryce + not no_touch +
+    not contacted in the last 10 days (team no-poach window) — EXCEPT leads
+    Bryce has already emailed, which always stay visible so he can track replies
+    even though logging his email made them 'recently contacted'.
+    Colors + per-lead notes persist via LeadColor / LeadNote."""
+    cutoff = (date.today() - timedelta(days=10)).isoformat()  # contacted on/after this = too recent
+
+    emailed_by_me = RecycledLead.my_email_count > 0
+    # Fresh target: not flagged no_touch AND last real contact >10 days ago (or never)
+    fresh_target = db.and_(
+        db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None),
+        db.or_(RecycledLead.last_contact_date == None,
+               RecycledLead.last_contact_date < cutoff),
+    )
     q = (RecycledLead.query
          .filter(RecycledLead.is_converted == True,
                  RecycledLead.converted_opp_id != None,
-                 # not no_touch — UNLESS Bryce already emailed them (keep his
-                 # outreach visible for reply tracking even if flagged no_touch)
-                 db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None,
-                        RecycledLead.my_email_count > 0),
                  db.or_(RecycledLead.opp_owner_email == None,
-                        db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL)))
+                        db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL),
+                 db.or_(emailed_by_me, fresh_target)))
 
     notes = {n.sf_id: n.content for n in LeadNote.query.all()}
     draft_queue = {q.sf_id for q in OppDraftQueue.query.all()}
