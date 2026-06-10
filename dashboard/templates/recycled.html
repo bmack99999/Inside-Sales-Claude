@@ -135,7 +135,11 @@
                onclick="openEmailPicker(this)" title="Queue email draft">✉</div>
         </td>
         <td class="recycled-name">
+          {% if l.is_converted and l.converted_opp_id %}
+          <a href="{{ sf_base }}/lightning/r/Opportunity/{{ l.converted_opp_id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
+          {% else %}
           <a href="{{ sf_base }}/lightning/r/Lead/{{ l.id }}/view" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
+          {% endif %}
         </td>
         <td>{{ l.company or '—' }}</td>
         <td>
