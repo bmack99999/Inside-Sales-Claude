@@ -200,7 +200,7 @@ def main():
     source_list = "','".join(LEAD_SOURCES)
     leads_raw = run_soql(
         f"SELECT Id, Name, Company, Phone, Email, Status, LeadSource, Description, "
-        f"Lead_Created_Date__c, LastActivityDate, IsConverted, ConvertedOpportunityId "
+        f"Lead_Created_Date__c, LastActivityDate, IsConverted, ConvertedOpportunityId, Owner.Name "
         f"FROM Lead "
         f"WHERE LeadSource IN ('{source_list}') "
         f"AND Lead_Created_Date__c >= 2025-01-01 "
@@ -483,6 +483,7 @@ def main():
             'attempt_summary': attempt_summary,
             'notes_snippet': notes_snippet,
             'timezone': get_timezone(lead.get('Phone')),
+            'owner_name': (lead.get('Owner') or {}).get('Name'),
             'opp_owner_email': owner.get('email'),
             'opp_owner_name': owner.get('name'),
             'no_touch': no_touch,

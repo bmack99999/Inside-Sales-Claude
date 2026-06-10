@@ -151,6 +151,7 @@ class RecycledLead(db.Model):
     color              = db.Column(db.Text)  # yellow | red | blue | light_green | dark_green | purple
     timezone           = db.Column(db.Text)  # ET | CT | MT | PT | AK | HI
     last_contact_date  = db.Column(db.Text)  # most recent real completed contact (Call/Email/note), <= today
+    owner_name         = db.Column(db.Text)  # SF lead owner (assigned rep)
     opp_owner_email    = db.Column(db.Text)  # owner of the converted opp (for excluding Bryce's own)
     opp_owner_name     = db.Column(db.Text)  # display name of the opp owner
     no_touch           = db.Column(db.Boolean, default=False)  # DNC / demo set / appt set etc. (full-text scan)

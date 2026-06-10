@@ -110,6 +110,7 @@
         <th class="sortable th-age"   data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
         <th class="sortable th-date"  data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="sortable th-calls" data-col="attempts" onclick="sortTable('attempts')">Calls <span class="sort-arrow"></span></th>
+        <th class="th-rep">Rep</th>
         <th class="th-notes">Notes</th>
         <th class="th-acts">Activities</th>
       </tr>
@@ -147,6 +148,7 @@
         <td>{{ l.lead_age_days if l.lead_age_days is not none else 0 }}d</td>
         <td>{{ l.last_activity_date or 'Never' }}</td>
         <td>{{ l.call_attempts or 0 }}</td>
+        <td class="recycled-rep-cell">{{ l.owner_name or '—' }}</td>
         <td class="recycled-notes-cell">
           {% if l.notes_snippet %}
             <span class="recycled-notes" data-tooltip="{{ l.notes_snippet }}">{{ l.notes_snippet[:50] }}{% if l.notes_snippet|length > 50 %}…{% endif %}</span>

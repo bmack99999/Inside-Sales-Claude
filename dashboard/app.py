@@ -69,6 +69,7 @@ with app.app_context():
         ("recycled_leads", "timezone",      "TEXT"),
         ("recycled_leads", "notes_snippet", "TEXT"),
         ("recycled_leads", "last_contact_date", "TEXT"),
+        ("recycled_leads", "owner_name",         "TEXT"),
         ("recycled_leads", "opp_owner_email",   "TEXT"),
         ("recycled_leads", "opp_owner_name",    "TEXT"),
         ("recycled_leads", "no_touch",          "BOOLEAN DEFAULT FALSE"),
