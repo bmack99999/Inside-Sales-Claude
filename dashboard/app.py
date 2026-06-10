@@ -48,7 +48,7 @@ from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
-                    LeadEmailQueue, UserNotes, Commission)
+                    LeadEmailQueue, UserNotes, Commission, OppDraftQueue)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -1056,6 +1056,7 @@ def opp_targets():
                         db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL)))
 
     notes = {n.sf_id: n.content for n in LeadNote.query.all()}
+    draft_queue = {q.sf_id for q in OppDraftQueue.query.all()}
 
     leads = []
     for r in q.all():
@@ -1065,6 +1066,7 @@ def opp_targets():
             d['days_since_contact'] = None
         d['opp_url'] = f"{SF_BASE}/{r.converted_opp_id}"
         d['note']    = notes.get(r.id, '')
+        d['queued']  = r.id in draft_queue
         # Friendly "emailed" label, e.g. "Jun 2" (from the date Bryce emailed them)
         emd = parse_date(d.get('my_email_date'))
         d['emailed_display'] = emd.strftime('%b %-d') if emd else None
@@ -1076,6 +1078,7 @@ def opp_targets():
     return render_template('opp_targets.html',
         leads=leads,
         count=len(leads),
+        queued_count=len(draft_queue),
         sf_base=SF_BASE,
     )
 
@@ -1697,6 +1700,56 @@ def save_lead_note(sf_id):
         db.session.delete(row)  # empty note clears the record
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ── Opp Targets draft queue (select leads on the page, then Claude drafts) ─────
+
+@app.route('/api/opp_draft_queue', methods=['POST'])
+def toggle_opp_draft_queue():
+    """Check/uncheck a lead for email drafting on the Opp Targets page."""
+    data  = request.get_json() or {}
+    sf_id = (data.get('sf_id') or '').strip()
+    on    = bool(data.get('on'))
+    if not sf_id:
+        return jsonify({'error': 'sf_id required'}), 400
+    row = OppDraftQueue.query.get(sf_id)
+    if on and not row:
+        db.session.add(OppDraftQueue(sf_id=sf_id, queued_at=datetime.now().isoformat()))
+    elif not on and row:
+        db.session.delete(row)
+    db.session.commit()
+    return jsonify({'ok': True, 'queued': OppDraftQueue.query.count()})
+
+
+@app.route('/api/opp_draft_queue')
+def get_opp_draft_queue():
+    """Return the queued opp-target leads with fields needed to draft emails.
+    Consumed by Claude when Bryce says 'draft the opp target emails'."""
+    ids = [q.sf_id for q in OppDraftQueue.query.all()]
+    out = []
+    for r in RecycledLead.query.filter(RecycledLead.id.in_(ids)).all() if ids else []:
+        first = (r.name or '').strip().split(' ')[0] if r.name else ''
+        out.append({
+            'id': r.id,
+            'first_name': first,
+            'full_name': r.name,
+            'company': r.company,
+            'email': r.email,
+            'opp_id': r.converted_opp_id,
+        })
+    return jsonify({'count': len(out), 'leads': out})
+
+
+@app.route('/api/opp_draft_queue/clear', methods=['POST'])
+def clear_opp_draft_queue():
+    data  = request.get_json() or {}
+    if data.get('all'):
+        n = OppDraftQueue.query.delete()
+    else:
+        ids = data.get('sf_ids') or []
+        n = OppDraftQueue.query.filter(OppDraftQueue.sf_id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({'ok': True, 'cleared': n})
 
 
 if __name__ == '__main__':

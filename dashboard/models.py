@@ -175,6 +175,19 @@ class LeadNote(db.Model):
         return {'sf_id': self.sf_id, 'content': self.content, 'updated_at': self.updated_at}
 
 
+class OppDraftQueue(db.Model):
+    """Leads selected on the Opp Targets page for email drafting. Bryce checks
+    the box, then asks Claude to 'draft the opp target emails'. Persists so the
+    selection survives reloads; cleared after drafts are created."""
+    __tablename__ = 'opp_draft_queue'
+
+    sf_id     = db.Column(db.Text, primary_key=True)
+    queued_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {'sf_id': self.sf_id, 'queued_at': self.queued_at}
+
+
 class LeadColor(db.Model):
     """Persists user-assigned colors across re-scans, keyed by Salesforce ID."""
     __tablename__ = 'lead_colors'
