@@ -1833,3 +1833,19 @@ body {
   border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .tpl-del-btn:hover { background: #fdecea; }
+
+/* Templates rich text editor */
+.tpl-rt-toolbar { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0; }
+.tpl-rt-btn {
+  background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 10px; font-size: 12px; cursor: pointer; color: #444; line-height: 1;
+}
+.tpl-rt-btn:hover { background: #f0f4fa; border-color: var(--navy); color: var(--navy); }
+.tpl-richtext {
+  width: 100%; min-height: 160px; border: 1px solid var(--border);
+  border-radius: 8px; padding: 11px; font-size: 14px; line-height: 1.5;
+  box-sizing: border-box; overflow-y: auto; white-space: pre-wrap; margin-top: 4px;
+}
+.tpl-richtext:focus { outline: none; border-color: var(--navy-light); }
+.tpl-richtext:empty:before { content: attr(data-placeholder); color: #aaa; }
+.tpl-richtext a, .tpl-tile-body a { color: var(--navy-light); text-decoration: underline; }
