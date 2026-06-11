@@ -48,7 +48,8 @@ from config import Config
 from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
-                    LeadEmailQueue, UserNotes, Commission, OppDraftQueue)
+                    LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
+                    Template)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -109,6 +110,19 @@ with app.app_context():
                 "Still looking, or did things move in another direction?\n\n"
                 "Happy to share a quick rundown of what we offer if it's useful."
             ),
+        ))
+    # Seed a starter template tile if the table is empty
+    if Template.query.count() == 0:
+        db.session.add(Template(
+            title='Voicemail',
+            category='Phone',
+            body=(
+                "Hi {first_name}, this is Bryce with SkyTab. "
+                "Reaching out about the POS inquiry you put in. "
+                "Give me a call back when you get a chance and I'll walk you through it. Thanks!"
+            ),
+            sort_order=0,
+            updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
         ))
     db.session.commit()
 
@@ -715,6 +729,66 @@ def commissions_update():
             setattr(c, field, val if val != '' else None)
     db.session.commit()
     return jsonify({'ok': True, 'item': c.to_dict()})
+
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+@app.route('/templates_page')
+def templates_page():
+    rows = Template.query.order_by(Template.sort_order.asc(), Template.id.asc()).all()
+    items = [r.to_dict() for r in rows]
+    categories = sorted({(i.get('category') or 'General') for i in items})
+    return render_template('templates.html', items=items, categories=categories)
+
+
+@app.route('/api/templates')
+def api_templates():
+    rows = Template.query.order_by(Template.sort_order.asc(), Template.id.asc()).all()
+    return jsonify({'templates': [r.to_dict() for r in rows]})
+
+
+@app.route('/api/templates/create', methods=['POST'])
+def api_templates_create():
+    p = request.get_json(force=True) or {}
+    max_order = db.session.query(db.func.max(Template.sort_order)).scalar() or 0
+    t = Template(
+        title=(p.get('title') or 'Untitled').strip(),
+        category=(p.get('category') or 'General').strip() or 'General',
+        body=p.get('body') or '',
+        sort_order=max_order + 1,
+        updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+    )
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({'ok': True, 'item': t.to_dict()})
+
+
+@app.route('/api/templates/update', methods=['POST'])
+def api_templates_update():
+    p = request.get_json(force=True) or {}
+    t = Template.query.get(p.get('id'))
+    if not t:
+        return jsonify({'error': 'not found'}), 404
+    for field in ('title', 'category', 'body'):
+        if field in p:
+            val = (p[field] or '').strip() if field != 'body' else (p[field] or '')
+            if field == 'category' and not val:
+                val = 'General'
+            setattr(t, field, val)
+    t.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    db.session.commit()
+    return jsonify({'ok': True, 'item': t.to_dict()})
+
+
+@app.route('/api/templates/delete', methods=['POST'])
+def api_templates_delete():
+    p = request.get_json(force=True) or {}
+    t = Template.query.get(p.get('id'))
+    if not t:
+        return jsonify({'error': 'not found'}), 404
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────

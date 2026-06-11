@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Templates — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Templates</h1>
+    <div class="header-meta">Copy and paste blocks. Click a tile to edit.</div>
+  </div>
+  <div class="header-right">
+    <button class="tpl-add-btn" onclick="openEditor()">+ New Template</button>
+  </div>
+</div>
+
+<div class="tpl-filter-bar" id="tpl-filter-bar"></div>
+
+<div class="tpl-grid" id="tpl-grid"></div>
+<div class="tpl-empty" id="tpl-empty" style="display:none">No templates yet. Click "+ New Template" to add one.</div>
+
+<!-- Editor modal -->
+<div class="tpl-modal-overlay" id="tpl-modal" style="display:none">
+  <div class="tpl-modal">
+    <div class="tpl-modal-head">
+      <span id="tpl-modal-title">New Template</span>
+      <span class="tpl-modal-close" onclick="closeEditor()">&times;</span>
+    </div>
+    <input type="hidden" id="tpl-edit-id">
+    <label class="tpl-label">Title</label>
+    <input type="text" id="tpl-edit-title" class="tpl-input" placeholder="e.g. Voicemail">
+    <label class="tpl-label">Category</label>
+    <input type="text" id="tpl-edit-category" class="tpl-input" list="tpl-cat-list" placeholder="e.g. Phone">
+    <datalist id="tpl-cat-list"></datalist>
+    <label class="tpl-label">Body</label>
+    <textarea id="tpl-edit-body" class="tpl-textarea" rows="9" placeholder="Template text..."></textarea>
+    <div class="tpl-modal-actions">
+      <button class="tpl-del-btn" id="tpl-del-btn" onclick="deleteTemplate()" style="display:none">Delete</button>
+      <div style="flex:1"></div>
+      <button class="tpl-cancel-btn" onclick="closeEditor()">Cancel</button>
+      <button class="tpl-save-btn" onclick="saveTemplate()">Save</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let templates = {{ items | tojson }};
+let activeCat = 'All';
+
+function render() {
+  // filter bar
+  const cats = ['All', ...Array.from(new Set(templates.map(t => t.category || 'General'))).sort()];
+  const bar = document.getElementById('tpl-filter-bar');
+  bar.innerHTML = cats.map(c =>
+    `<button class="tpl-chip ${c === activeCat ? 'tpl-chip-active' : ''}" onclick="setCat('${c.replace(/'/g, "\\'")}')">${esc(c)}</button>`
+  ).join('');
+
+  // datalist for editor
+  document.getElementById('tpl-cat-list').innerHTML =
+    Array.from(new Set(templates.map(t => t.category || 'General'))).sort()
+      .map(c => `<option value="${esc(c)}">`).join('');
+
+  // grid
+  const grid = document.getElementById('tpl-grid');
+  const list = templates.filter(t => activeCat === 'All' || (t.category || 'General') === activeCat);
+  document.getElementById('tpl-empty').style.display = templates.length ? 'none' : 'block';
+  grid.innerHTML = list.map(t => `
+    <div class="tpl-tile">
+      <div class="tpl-tile-head">
+        <span class="tpl-tile-cat">${esc(t.category || 'General')}</span>
+        <button class="tpl-edit-icon" title="Edit" onclick="openEditor(${t.id})">&#9998;</button>
+      </div>
+      <div class="tpl-tile-title">${esc(t.title || 'Untitled')}</div>
+      <div class="tpl-tile-body">${esc(t.body || '')}</div>
+      <button class="tpl-copy-btn" data-id="${t.id}" onclick="copyTemplate(${t.id}, this)">Copy</button>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function setCat(c) { activeCat = c; render(); }
+
+function copyTemplate(id, btn) {
+  const t = templates.find(x => x.id === id);
+  if (!t) return;
+  navigator.clipboard.writeText(t.body || '').then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('tpl-copy-done');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('tpl-copy-done'); }, 1200);
+  });
+}
+
+function openEditor(id) {
+  const t = id ? templates.find(x => x.id === id) : null;
+  document.getElementById('tpl-edit-id').value      = t ? t.id : '';
+  document.getElementById('tpl-edit-title').value   = t ? (t.title || '') : '';
+  document.getElementById('tpl-edit-category').value= t ? (t.category || '') : '';
+  document.getElementById('tpl-edit-body').value    = t ? (t.body || '') : '';
+  document.getElementById('tpl-modal-title').textContent = t ? 'Edit Template' : 'New Template';
+  document.getElementById('tpl-del-btn').style.display = t ? 'inline-block' : 'none';
+  document.getElementById('tpl-modal').style.display = 'flex';
+}
+
+function closeEditor() { document.getElementById('tpl-modal').style.display = 'none'; }
+
+function saveTemplate() {
+  const id = document.getElementById('tpl-edit-id').value;
+  const payload = {
+    title:    document.getElementById('tpl-edit-title').value,
+    category: document.getElementById('tpl-edit-category').value,
+    body:     document.getElementById('tpl-edit-body').value,
+  };
+  const url = id ? '/api/templates/update' : '/api/templates/create';
+  if (id) payload.id = parseInt(id, 10);
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d.item) {
+        if (id) {
+          const i = templates.findIndex(x => x.id === d.item.id);
+          if (i >= 0) templates[i] = d.item;
+        } else {
+          templates.push(d.item);
+        }
+      }
+      closeEditor();
+      render();
+    });
+}
+
+function deleteTemplate() {
+  const id = parseInt(document.getElementById('tpl-edit-id').value, 10);
+  if (!id || !confirm('Delete this template?')) return;
+  fetch('/api/templates/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+    .then(r => r.json())
+    .then(() => {
+      templates = templates.filter(x => x.id !== id);
+      closeEditor();
+      render();
+    });
+}
+
+render();
+</script>
+{% endblock %}

@@ -289,6 +289,21 @@ class EmailTemplate(db.Model):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+class Template(db.Model):
+    """User-editable copy/paste templates shown as tiles on the Templates page."""
+    __tablename__ = 'templates'
+
+    id         = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title      = db.Column(db.Text, default='')
+    category   = db.Column(db.Text, default='General')
+    body       = db.Column(db.Text, default='')
+    sort_order = db.Column(db.Integer, default=0)
+    updated_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 class UserNotes(db.Model):
     """Persistent notes pad — single row, keyed by note_key."""
     __tablename__ = 'user_notes'

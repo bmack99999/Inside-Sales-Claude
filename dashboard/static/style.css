@@ -1742,3 +1742,94 @@ body {
 
 /* Score column */
 .score-cell { font-weight: 700; font-size: 13px; text-align: center; width: 52px; }
+
+/* ── Templates page ─────────────────────────────────────────────────────────── */
+.tpl-add-btn {
+  background: var(--navy); color: #fff; border: none; padding: 9px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tpl-add-btn:hover { background: var(--navy-dark); }
+
+.tpl-filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 20px; }
+.tpl-chip {
+  background: #fff; border: 1px solid var(--border); color: #555;
+  padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.tpl-chip:hover { border-color: var(--navy); color: var(--navy); }
+.tpl-chip-active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+.tpl-grid {
+  display: grid; gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.tpl-empty { color: #888; font-size: 14px; padding: 40px 0; text-align: center; }
+
+.tpl-tile {
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; display: flex; flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05); transition: box-shadow .15s, transform .15s;
+}
+.tpl-tile:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); transform: translateY(-2px); }
+.tpl-tile-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tpl-tile-cat {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--navy-light); background: #eef3fb; padding: 3px 9px; border-radius: 6px;
+}
+.tpl-edit-icon {
+  background: none; border: none; color: #b0b0b0; cursor: pointer; font-size: 15px;
+  padding: 2px 4px; border-radius: 4px;
+}
+.tpl-edit-icon:hover { color: var(--navy); background: #f0f4fa; }
+.tpl-tile-title { font-size: 15px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+.tpl-tile-body {
+  font-size: 13px; color: #444; line-height: 1.5; white-space: pre-wrap;
+  flex: 1; margin-bottom: 14px; max-height: 200px; overflow-y: auto;
+}
+.tpl-copy-btn {
+  background: #fff; color: var(--navy); border: 1.5px solid var(--navy);
+  padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; width: 100%; transition: all .15s;
+}
+.tpl-copy-btn:hover { background: var(--navy); color: #fff; }
+.tpl-copy-done { background: #1e8449 !important; color: #fff !important; border-color: #1e8449 !important; }
+
+/* Editor modal */
+.tpl-modal-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,.5);
+  display: flex; align-items: flex-start; justify-content: center; z-index: 1000;
+  padding: 60px 20px; overflow-y: auto;
+}
+.tpl-modal {
+  background: #fff; border-radius: 14px; width: 100%; max-width: 520px;
+  padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+.tpl-modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 18px;
+}
+.tpl-modal-close { cursor: pointer; color: #999; font-size: 24px; line-height: 1; }
+.tpl-modal-close:hover { color: #333; }
+.tpl-label { display: block; font-size: 12px; font-weight: 600; color: #666; margin: 12px 0 5px; }
+.tpl-input, .tpl-textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 11px; font-size: 14px; font-family: inherit; box-sizing: border-box;
+}
+.tpl-input:focus, .tpl-textarea:focus { outline: none; border-color: var(--navy-light); }
+.tpl-textarea { resize: vertical; line-height: 1.5; }
+.tpl-modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+.tpl-save-btn {
+  background: var(--navy); color: #fff; border: none; padding: 9px 20px;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tpl-save-btn:hover { background: var(--navy-dark); }
+.tpl-cancel-btn {
+  background: #fff; color: #666; border: 1px solid var(--border); padding: 9px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tpl-cancel-btn:hover { background: #f5f5f5; }
+.tpl-del-btn {
+  background: #fff; color: #c0392b; border: 1px solid #e6b0aa; padding: 9px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.tpl-del-btn:hover { background: #fdecea; }
