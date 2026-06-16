@@ -104,6 +104,7 @@
         <th class="email-th"></th>
         <th>Name</th>
         <th>Company</th>
+        <th class="th-source">Lead Source</th>
         <th>Phone</th>
         <th class="th-tz">TZ</th>
         <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">&#9662;</span></th>
@@ -142,6 +143,7 @@
           {% endif %}
         </td>
         <td>{{ l.company or '—' }}</td>
+        <td class="recycled-source-cell">{{ l.lead_source or '—' }}</td>
         <td>
           {% if l.phone %}
           <a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>

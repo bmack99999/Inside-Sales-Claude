@@ -66,6 +66,7 @@ class Opportunity(db.Model):
     phone              = db.Column(db.Text)
     email              = db.Column(db.Text)
     stage              = db.Column(db.Text)
+    lead_source        = db.Column(db.Text)
     amount             = db.Column(db.Numeric, default=0)
     close_date         = db.Column(db.Text)
     last_activity_date = db.Column(db.Text)

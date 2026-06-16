@@ -108,6 +108,7 @@
         <th class="email-th"></th>
         <th>Name</th>
         <th>Company</th>
+        <th class="th-source">Lead Source</th>
         <th>Phone</th>
         <th class="th-tz">TZ</th>
         <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
@@ -141,6 +142,7 @@
           <a href="{{ l.sf_url }}" target="_blank" class="recycled-name-link">{{ l.name or '—' }}</a>
         </td>
         <td>{{ l.company or '—' }}</td>
+        <td class="recycled-source-cell">{{ l.lead_source or '—' }}</td>
         <td>
           {% if l.phone %}<a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>
           {% else %}—{% endif %}
@@ -186,6 +188,7 @@
         <th class="th-phone">Phone</th>
         <th class="th-tz">TZ</th>
         <th class="th-stage">Stage</th>
+        <th class="th-source">Lead Source</th>
         <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
         <th class="sortable th-date"  data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
         <th class="sortable th-date"  data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow"></span></th>
@@ -225,6 +228,7 @@
         </td>
         <td>{% if o.timezone %}<span class="tz-badge tz-{{ o.timezone }}">{{ o.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
+        <td class="recycled-source-cell">{{ o.lead_source or '—' }}</td>
         <td class="score-cell">{{ o.score or '—' }}</td>
         <td>{{ o.close_date or '—' }}</td>
         <td>{{ o.created_date or '—' }}</td>

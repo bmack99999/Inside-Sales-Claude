@@ -78,6 +78,7 @@ with app.app_context():
         ("recycled_leads", "my_email_count",    "INTEGER DEFAULT 0"),
         ("opportunities",  "created_date",  "TEXT"),
         ("opportunities",  "email",         "TEXT"),
+        ("opportunities",  "lead_source",   "TEXT"),
         ("sf_task_data",   "weekly_count", "INTEGER DEFAULT 0"),
         ("sf_task_data",   "week_start",   "TEXT"),
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
