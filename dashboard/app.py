@@ -708,6 +708,13 @@ def commissions_data():
     return jsonify({'commissions': items})
 
 
+@app.route('/api/callbacks_data')
+def callbacks_data():
+    callbacks = [enrich_callback(c.to_dict())
+                 for c in Callback.query.order_by(Callback.task_due.asc()).all()]
+    return jsonify({'callbacks': callbacks})
+
+
 @app.route('/api/commissions/update', methods=['POST'])
 def commissions_update():
     payload = request.get_json(force=True) or {}
