@@ -525,6 +525,8 @@ def my_leads():
         d['sf_url']   = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
         d['type']     = 'opportunity'
         d['score']    = score_record(d)
+        age = days_since(d.get('created_date'))
+        d['opp_age_days'] = None if age == 9999 else age
         opps.append(d)
     opps.sort(key=lambda x: x['score'], reverse=True)
 

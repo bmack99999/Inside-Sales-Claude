@@ -190,8 +190,7 @@
         <th class="th-stage">Stage</th>
         <th class="th-source">Lead Source</th>
         <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
-        <th class="sortable th-date"  data-col="close"    onclick="sortTable('close')">Close Date <span class="sort-arrow"></span></th>
-        <th class="sortable th-date"  data-col="created"  onclick="sortTable('created')">Created <span class="sort-arrow"></span></th>
+        <th class="sortable th-age"   data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
         <th class="sortable th-date"  data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
         <th class="th-notes">Notes</th>
         <th class="th-acts">Activities</th>
@@ -202,8 +201,7 @@
       <tr class="recycled-row ml-row {% if o.color %}row-color-{{ o.color }}{% endif %}"
           data-search="{{ (o.name or '')|lower }} {{ (o.account_name or '')|lower }} {{ (o.contact_name or '')|lower }} {{ (o.phone or '')|lower }}"
           data-activity="{{ o.last_activity_date or '' }}"
-          data-close="{{ o.close_date or '' }}"
-          data-created="{{ o.created_date or '' }}"
+          data-age="{{ o.opp_age_days or 0 }}"
           data-attempts="0"
           data-score="{{ o.score or 0 }}">
         <td class="color-cell">
@@ -230,8 +228,7 @@
         <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
         <td class="recycled-source-cell">{{ o.lead_source or '—' }}</td>
         <td class="score-cell">{{ o.score or '—' }}</td>
-        <td>{{ o.close_date or '—' }}</td>
-        <td>{{ o.created_date or '—' }}</td>
+        <td>{{ o.opp_age_days if o.opp_age_days is not none else 0 }}d</td>
         <td>{{ o.last_activity_date or 'Never' }}</td>
         <td class="recycled-notes-cell">
           {% if o.notes_snippet %}
