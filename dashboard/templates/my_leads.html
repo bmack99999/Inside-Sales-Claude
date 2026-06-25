@@ -185,10 +185,10 @@
         <th class="th-oppname">Opportunity</th>
         <th class="th-account">Account</th>
         <th class="th-contact">Contact</th>
+        <th class="th-source">Lead Source</th>
         <th class="th-phone">Phone</th>
         <th class="th-tz">TZ</th>
         <th class="th-stage">Stage</th>
-        <th class="th-source">Lead Source</th>
         <th class="sortable th-score" data-col="score"    onclick="sortTable('score')">Score <span class="sort-arrow">▾</span></th>
         <th class="sortable th-age"   data-col="age"      onclick="sortTable('age')">Age <span class="sort-arrow"></span></th>
         <th class="sortable th-date"  data-col="activity" onclick="sortTable('activity')">Last Activity <span class="sort-arrow"></span></th>
@@ -220,13 +220,13 @@
         </td>
         <td>{{ o.account_name or '—' }}</td>
         <td>{{ o.contact_name or '—' }}</td>
+        <td class="recycled-source-cell">{{ o.lead_source or '—' }}</td>
         <td>
           {% if o.phone %}<a href="tel:{{ o.phone }}" class="card-phone">{{ o.phone }}</a>
           {% else %}—{% endif %}
         </td>
         <td>{% if o.timezone %}<span class="tz-badge tz-{{ o.timezone }}">{{ o.timezone }}</span>{% else %}—{% endif %}</td>
         <td><span class="recycled-source">{{ o.stage or '—' }}</span></td>
-        <td class="recycled-source-cell">{{ o.lead_source or '—' }}</td>
         <td class="score-cell">{{ o.score or '—' }}</td>
         <td>{{ o.opp_age_days if o.opp_age_days is not none else 0 }}d</td>
         <td>{{ o.last_activity_date or 'Never' }}</td>
