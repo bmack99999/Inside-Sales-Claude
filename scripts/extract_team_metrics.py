@@ -23,14 +23,21 @@ INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "d219d2be8540f1d079dd896937fbd
 
 SF_ALIAS = "shift4"
 MY_ID    = "005Pd0000084UhFIAU"
+TEAM_ROLE_ID = "00EPd000005pGe9MAE"   # Inside Sales Account Executive
 
+# Fallback roster — overwritten at runtime by _refresh_team() so new hires
+# appear automatically.
 TEAM = {
     "005Pd000008yCGSIA2": "Bryan Robinson",
     "005Pd0000084UhFIAU": "Bryce Mack",
     "005Pd000009wS1xIAE": "Daniel Wellen",
+    "005Pd00000CGjrtIAD": "Dillon Singontiko",
     "005Pd000009EiX3IAK": "Drew Copeland",
     "005Pd000008yCGRIA2": "Farzad Minooei",
     "005Pd000009ixaHIAQ": "Hector Garcia",
+    "005Pd00000CGkWDIA1": "Jason Nutt",
+    "005Pd00000CGlC9IAL": "Jenbenton Jean-Baptiste",
+    "005Pd00000CbZ9ZIAV": "Julian Brooks",
     "005Pd000009g1grIAA": "Michael Hernandez",
     "005Pd000009EiNNIA0": "Miles Coughlin",
     "005Pd000009i3EjIAI": "Nicholas Olson",
@@ -38,8 +45,26 @@ TEAM = {
 }
 
 TEAM_IDS = ",".join(f"'{i}'" for i in TEAM)
+
+
+def _refresh_team():
+    """Pull the live roster by role so the team list tracks hires/departures."""
+    global TEAM, TEAM_IDS
+    try:
+        recs = sf_query(
+            f"SELECT Id, Name FROM User "
+            f"WHERE UserRoleId='{TEAM_ROLE_ID}' AND IsActive=true ORDER BY Name"
+        )
+        if recs:
+            TEAM = {r["Id"]: r["Name"] for r in recs}
+            TEAM_IDS = ",".join(f"'{i}'" for i in TEAM)
+            print(f"  Roster: {len(TEAM)} reps (live from role)")
+    except SFQueryError as e:
+        print(f"  WARN: roster query failed ({e}) — using fallback list of "
+              f"{len(TEAM)}.", file=sys.stderr)
 HISTORY_START_YEAR  = 2026
 HISTORY_START_MONTH = 3
+MIX_WINDOW_START    = "2026-03-01"
 OUTPUT_PATH = "dashboard/data/team_metrics.json"
 
 
@@ -160,8 +185,100 @@ def _pull_month(y, m, is_current):
     }
 
 
+def _pull_mix_adjusted():
+    """Mix-adjusted close rates since MIX_WINDOW_START, with a full per-rep
+    per-source breakdown (leads / converted / won) for the KPIs pivot table.
+
+    Expected wins per rep = sum over sources of
+    (rep's leads from source x team-average close rate for source).
+    Close rate basis: deals closed in window / leads received in window.
+    """
+    leads = defaultdict(lambda: defaultdict(int))   # oid -> source -> count
+    conv  = defaultdict(lambda: defaultdict(int))
+    wins  = defaultdict(lambda: defaultdict(int))
+
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
+        f"WHERE OwnerId IN ({TEAM_IDS}) "
+        f"AND CreatedDate >= {MIX_WINDOW_START}T00:00:00Z "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        leads[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND IsConverted=true "
+        f"AND CreatedDate >= {MIX_WINDOW_START}T00:00:00Z "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        conv[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Closed Won' "
+        f"AND CloseDate >= {MIX_WINDOW_START} "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        wins[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
+    src_leads = defaultdict(int)
+    src_conv  = defaultdict(int)
+    src_wins  = defaultdict(int)
+    for oid in TEAM:
+        for s, c in leads[oid].items():
+            src_leads[s] += c
+        for s, c in conv[oid].items():
+            src_conv[s] += c
+        for s, c in wins[oid].items():
+            src_wins[s] += c
+    rates = {s: src_wins[s] / src_leads[s] for s in src_leads if src_leads[s]}
+
+    all_sources = sorted(set(src_leads) | set(src_wins),
+                         key=lambda s: -src_leads.get(s, 0))
+
+    reps = []
+    for oid, name in TEAM.items():
+        tl = sum(leads[oid].values())
+        tw = sum(wins[oid].values())
+        tc = sum(conv[oid].values())
+        if not tl and not tw:
+            continue
+        expected = sum(c * rates[s] for s, c in leads[oid].items() if s in rates)
+        by_source = {}
+        for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]):
+            by_source[s] = [leads[oid].get(s, 0), conv[oid].get(s, 0),
+                            wins[oid].get(s, 0)]
+        reps.append({
+            "name": name,
+            "is_me": oid == MY_ID,
+            "leads": tl,
+            "converted": tc,
+            "won": tw,
+            "conv_pct":     round(tc / tl * 100, 1) if tl else 0,
+            "actual_pct":   round(tw / tl * 100, 1) if tl else 0,
+            "expected_won": round(expected, 1),
+            "expected_pct": round(expected / tl * 100, 1) if tl else 0,
+            "index_pct":    round((tw / expected - 1) * 100, 1) if expected else 0,
+            "by_source":    by_source,
+        })
+    reps.sort(key=lambda r: -r["index_pct"])
+    for i, r in enumerate(reps):
+        r["rank"] = i + 1
+
+    source_rates = [
+        {"source": s, "leads": src_leads.get(s, 0), "converted": src_conv.get(s, 0),
+         "won": src_wins.get(s, 0),
+         "conv_pct": round(src_conv.get(s, 0) / src_leads[s] * 100, 1) if src_leads.get(s) else 0,
+         "rate_pct": round(rates.get(s, 0) * 100, 1)}
+        for s in all_sources
+    ]
+    return {"window_start": MIX_WINDOW_START, "reps": reps,
+            "source_rates": source_rates, "sources": all_sources}
+
+
 def main():
     print("Extracting team metrics from Salesforce...")
+    _refresh_team()
     today = date.today()
     current_key = f"{today.year:04d}-{today.month:02d}"
 
@@ -192,12 +309,21 @@ def main():
               "refusing to overwrite good data.", file=sys.stderr)
         sys.exit(1)
 
+    mix_adjusted = None
+    try:
+        print("  Mix-adjusted close rates...")
+        mix_adjusted = _pull_mix_adjusted()
+    except SFQueryError as e:
+        print(f"  WARN: mix-adjusted pull failed ({e}) — continuing without it.",
+              file=sys.stderr)
+
     output = {
         "refreshed_at":      datetime.now().strftime("%Y-%m-%d %I:%M %p"),
         "month":             current["month_label"],
         "month_start":       current["month_start"],
         "reps":              current["reps"],
         "monthly_snapshots": snapshots,
+        "mix_adjusted":      mix_adjusted,
     }
 
     with open(OUTPUT_PATH, "w") as f:

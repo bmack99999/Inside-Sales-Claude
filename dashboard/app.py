@@ -83,6 +83,7 @@ with app.app_context():
         ("sf_task_data",   "week_start",   "TEXT"),
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
         ("team_metrics",   "monthly_snapshots", "TEXT"),
+        ("team_metrics",   "mix_adjusted",      "TEXT"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
@@ -1277,6 +1278,7 @@ def api_ingest():
             month_start       = t.get('month_start'),
             reps              = t.get('reps', []),
             monthly_snapshots = t.get('monthly_snapshots', {}),
+            mix_adjusted      = t.get('mix_adjusted'),
         ))
         db.session.commit()
         return jsonify({'ok': True, 'reps': len(t.get('reps', [])),

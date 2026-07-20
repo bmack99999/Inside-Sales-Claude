@@ -244,6 +244,7 @@ class TeamMetrics(db.Model):
     month_start       = db.Column(db.Text)
     reps              = db.Column(JsonList)   # list of rep dicts (current month)
     monthly_snapshots = db.Column(JsonList)   # dict keyed by YYYY-MM → {month_label, month_start, reps}
+    mix_adjusted      = db.Column(JsonList)   # {window_start, reps, source_rates} — expected-vs-actual close rates
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}

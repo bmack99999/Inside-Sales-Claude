@@ -138,6 +138,79 @@
   </div>
 </div>
 
+<!-- ── Mix-Adjusted Performance ────────────────────────────────────────────── -->
+<div id="mix-section" style="display:none">
+  <div class="section-divider">Mix-Adjusted Performance — since <span id="mix-window">Mar 1</span></div>
+  <div class="boss-ratio-row" style="margin-bottom:12px">
+    <div class="boss-ratio-card">
+      <div class="boss-ratio-label">My Close Rate</div>
+      <div class="boss-ratio-value" id="mix-actual">—</div>
+      <div class="boss-ratio-sub" id="mix-actual-sub"></div>
+    </div>
+    <div class="boss-ratio-card">
+      <div class="boss-ratio-label">Expected From My Lead Mix</div>
+      <div class="boss-ratio-value" id="mix-expected" style="color:#6b7280">—</div>
+      <div class="boss-ratio-sub" id="mix-expected-sub"></div>
+    </div>
+    <div class="boss-ratio-card">
+      <div class="boss-ratio-label">Vs Expected</div>
+      <div class="boss-ratio-value" id="mix-index">—</div>
+      <div class="boss-ratio-sub" id="mix-index-sub"></div>
+    </div>
+  </div>
+  <div class="log-table-card" style="margin-bottom:24px">
+    <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <span>Rep Performance Pivot — Leads, Conversion &amp; Close by Source</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label for="mix-source-select" style="font-size:12px;color:#666">Lead source:</label>
+        <select id="mix-source-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+          <option value="">All sources</option>
+        </select>
+      </div>
+    </div>
+    <table class="log-table" id="mix-table">
+      <thead>
+        <tr>
+          <th style="text-align:left;width:30px">#</th>
+          <th class="mix-th-sort" data-col="name"         style="text-align:left;cursor:pointer">Rep</th>
+          <th class="mix-th-sort" data-col="leads"        style="cursor:pointer">Leads</th>
+          <th class="mix-th-sort" data-col="converted"    style="cursor:pointer">Conv</th>
+          <th class="mix-th-sort" data-col="conv_pct"     style="cursor:pointer">Conv%</th>
+          <th class="mix-th-sort" data-col="won"          style="cursor:pointer">Won</th>
+          <th class="mix-th-sort" data-col="actual_pct"   style="cursor:pointer">Close%</th>
+          <th class="mix-th-sort" data-col="expected_won" style="cursor:pointer">Exp Won</th>
+          <th class="mix-th-sort" data-col="expected_pct" style="cursor:pointer">Exp%</th>
+          <th class="mix-th-sort" data-col="index_pct"    style="cursor:pointer">Vs Exp</th>
+        </tr>
+      </thead>
+      <tbody id="mix-tbody"></tbody>
+      <tfoot id="mix-tfoot"></tfoot>
+    </table>
+    <div style="margin-top:8px;font-size:11px;color:#aaa;padding:0 4px">
+      Click any column header to sort · pick a lead source to pivot every column to that source only.
+      Expected = what an average closer would produce given the same leads, using team-average
+      close rates per source. Beating expected = outperforming your hand.
+    </div>
+  </div>
+
+  <div class="log-table-card" style="margin-bottom:24px">
+    <div class="log-table-title">Team Totals by Lead Source</div>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th style="text-align:left">Source</th>
+          <th>Leads</th>
+          <th>Conv</th>
+          <th>Conv%</th>
+          <th>Won</th>
+          <th>Close%</th>
+        </tr>
+      </thead>
+      <tbody id="mix-src-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ── SF Tasks ────────────────────────────────────────────────────────────── -->
 <div class="sf-tasks-grid">
   <div class="sf-tasks-card">
@@ -429,6 +502,148 @@ function _monthLabelFromKey(key) {
   return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
+let _mixData = null;
+let _mixSource = '';
+let _mixSortCol = 'index_pct';
+let _mixSortAsc = false;
+
+function _mixRateFor(source) {
+  const sr = (_mixData.source_rates || []).find(s => s.source === source);
+  return sr && sr.leads ? sr.won / sr.leads : 0;
+}
+
+function _mixRows() {
+  // Build display rows for the current source filter.
+  return _mixData.reps.map(r => {
+    if (!_mixSource) {
+      return { name: r.name, is_me: r.is_me, leads: r.leads, converted: r.converted,
+               won: r.won, conv_pct: r.conv_pct, actual_pct: r.actual_pct,
+               expected_won: r.expected_won, expected_pct: r.expected_pct,
+               index_pct: r.index_pct };
+    }
+    const bs = (r.by_source || {})[_mixSource] || [0, 0, 0];
+    const [l, c, w] = bs;
+    const exp = l * _mixRateFor(_mixSource);
+    return {
+      name: r.name, is_me: r.is_me, leads: l, converted: c, won: w,
+      conv_pct: l ? +(c / l * 100).toFixed(1) : 0,
+      actual_pct: l ? +(w / l * 100).toFixed(1) : 0,
+      expected_won: +exp.toFixed(1),
+      expected_pct: l ? +(exp / l * 100).toFixed(1) : 0,
+      index_pct: exp > 0 ? +((w / exp - 1) * 100).toFixed(1) : 0,
+    };
+  }).filter(r => r.leads > 0 || r.won > 0);
+}
+
+function renderMixTable() {
+  const rows = _mixRows();
+  rows.sort((a, b) => {
+    if (_mixSortCol === 'name') {
+      return _mixSortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+    }
+    const va = a[_mixSortCol] || 0, vb = b[_mixSortCol] || 0;
+    return _mixSortAsc ? va - vb : vb - va;
+  });
+
+  document.querySelectorAll('.mix-th-sort').forEach(th => {
+    const col = th.dataset.col;
+    const arrow = col === _mixSortCol ? (_mixSortAsc ? ' ▲' : ' ▼') : ' ⇅';
+    th.textContent = th.textContent.replace(/ [▲▼⇅]$/, '') + arrow;
+    th.style.color = col === _mixSortCol ? '#1d4ed8' : '';
+  });
+
+  document.getElementById('mix-tbody').innerHTML = rows.map((r, i) => {
+    const rowCls = r.is_me ? 'style="background:#e8f0fe;font-weight:600"' : '';
+    const pos = r.index_pct >= 0;
+    return `<tr ${rowCls}>
+      <td style="color:#888;font-size:12px">${i + 1}</td>
+      <td style="text-align:left">${r.is_me ? r.name + ' ◀' : r.name}</td>
+      <td>${r.leads}</td>
+      <td>${r.converted}</td>
+      <td>${r.conv_pct}%</td>
+      <td><strong>${r.won}</strong></td>
+      <td>${r.actual_pct}%</td>
+      <td style="color:#6b7280">${r.expected_won}</td>
+      <td style="color:#6b7280">${r.expected_pct}%</td>
+      <td style="color:${pos ? '#059669' : '#dc2626'};font-weight:600">${pos ? '+' : ''}${r.index_pct}%</td>
+    </tr>`;
+  }).join('');
+
+  const tl = rows.reduce((s, r) => s + r.leads, 0);
+  const tc = rows.reduce((s, r) => s + r.converted, 0);
+  const tw = rows.reduce((s, r) => s + r.won, 0);
+  const te = rows.reduce((s, r) => s + r.expected_won, 0);
+  document.getElementById('mix-tfoot').innerHTML = `<tr style="border-top:2px solid #d1d5db;font-weight:700;background:#f9fafb">
+    <td></td>
+    <td style="text-align:left">TEAM</td>
+    <td>${tl}</td>
+    <td>${tc}</td>
+    <td>${tl ? (tc / tl * 100).toFixed(1) : 0}%</td>
+    <td>${tw}</td>
+    <td>${tl ? (tw / tl * 100).toFixed(1) : 0}%</td>
+    <td style="color:#6b7280">${te.toFixed(1)}</td>
+    <td style="color:#6b7280">${tl ? (te / tl * 100).toFixed(1) : 0}%</td>
+    <td></td>
+  </tr>`;
+}
+
+function renderMixAdjusted(mix) {
+  if (!mix || !mix.reps || !mix.reps.length) return;
+  _mixData = mix;
+  document.getElementById('mix-section').style.display = '';
+
+  const ws = mix.window_start || '';
+  if (ws) {
+    const [y, m, d] = ws.split('-').map(Number);
+    document.getElementById('mix-window').textContent =
+      new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  const me = mix.reps.find(r => r.is_me);
+  if (me) {
+    document.getElementById('mix-actual').textContent = me.actual_pct + '%';
+    document.getElementById('mix-actual-sub').textContent = me.won + ' deals / ' + me.leads + ' leads';
+    document.getElementById('mix-expected').textContent = me.expected_pct + '%';
+    document.getElementById('mix-expected-sub').textContent = '~' + Math.round(me.expected_won) + ' deals for an average closer';
+    const idx = document.getElementById('mix-index');
+    const pos = me.index_pct >= 0;
+    idx.textContent = (pos ? '+' : '') + me.index_pct + '%';
+    idx.style.color = pos ? '#059669' : '#dc2626';
+    document.getElementById('mix-index-sub').textContent = pos
+      ? 'closing above what my lead mix predicts'
+      : 'below what my lead mix predicts';
+  }
+
+  // Source filter dropdown
+  const select = document.getElementById('mix-source-select');
+  const sources = mix.sources || (mix.source_rates || []).map(s => s.source);
+  select.innerHTML = '<option value="">All sources</option>' +
+    sources.map(s => `<option value="${s}">${s}</option>`).join('');
+  select.onchange = () => { _mixSource = select.value; renderMixTable(); };
+
+  // Sortable headers
+  document.querySelectorAll('.mix-th-sort').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (_mixSortCol === col) { _mixSortAsc = !_mixSortAsc; }
+      else { _mixSortCol = col; _mixSortAsc = col === 'name'; }
+      renderMixTable();
+    };
+  });
+
+  renderMixTable();
+
+  // Team totals by source
+  document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => `<tr>
+    <td style="text-align:left">${s.source}</td>
+    <td>${s.leads}</td>
+    <td>${s.converted != null ? s.converted : '—'}</td>
+    <td>${s.conv_pct != null ? s.conv_pct + '%' : '—'}</td>
+    <td>${s.won}</td>
+    <td><strong>${s.rate_pct}%</strong></td>
+  </tr>`).join('');
+}
+
 function applyTeamMonth(key) {
   if (!_teamSnapshots || !_teamSnapshots[key]) return;
   const snap = _teamSnapshots[key];
@@ -446,6 +661,8 @@ fetch('/api/team_metrics')
       return;
     }
     document.getElementById('team-refreshed').textContent = data.refreshed_at ? 'as of ' + data.refreshed_at : '';
+
+    renderMixAdjusted(data.mix_adjusted);
 
     // Build month dropdown from snapshots, default to current month.
     const snapshots = data.monthly_snapshots || {};
