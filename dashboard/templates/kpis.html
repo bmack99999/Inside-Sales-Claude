@@ -167,6 +167,7 @@
       <div style="display:flex;align-items:center;gap:8px">
         <label for="mix-trend-metric" style="font-size:12px;color:#666">Metric:</label>
         <select id="mix-trend-metric" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+          <option value="deals">Deals closed</option>
           <option value="mvf">MVF share of intake</option>
           <option value="mixq">Mix quality (expected close %)</option>
           <option value="close">Actual close %</option>
@@ -754,17 +755,24 @@ function applyMixWindow() {
 function _mixTrendSeries(metric) {
   const monthly = (_mixData && _mixData.monthly) || {};
   const keys = Object.keys(monthly).sort();
-  const labels = [], meVals = [], teamVals = [];
+  const labels = [], meVals = [], teamVals = [], meNotes = [], tmNotes = [];
+  const isPct = metric !== 'deals';
   keys.forEach(k => {
     const mix = monthly[k];
     const rates = _effRates(mix);
     const rows = (mix.reps || []).map(r => _repTotals(r, rates, ''));
     const meR = rows.find(r => r.is_me);
+    const active = rows.filter(r => r.leads > 0);
     const TL = rows.reduce((a, r) => a + r.leads, 0);
     const TW = rows.reduce((a, r) => a + r.won, 0);
     const TE = rows.reduce((a, r) => a + r.expected_won, 0);
-    let meV = null, tmV = null;
-    if (metric === 'mvf') {
+    let meV = null, tmV = null, meN = '', tmN = '';
+    if (metric === 'deals') {
+      meV = meR ? meR.won : null;
+      tmV = active.length ? +(TW / active.length).toFixed(1) : null;
+      meN = meR ? meR.won + ' deals from ' + meR.leads + ' leads' : '';
+      tmN = 'avg per rep · ' + TW + ' team total';
+    } else if (metric === 'mvf') {
       const meBs = ((mix.reps || []).find(r => r.is_me) || {}).by_source || {};
       const [ml, , , minv] = _bs4(meBs['MVF'] || []);
       const meMvf = Math.max(0, ml - (_mixValid ? minv : 0));
@@ -772,29 +780,40 @@ function _mixTrendSeries(metric) {
       const tMvf = sr ? sr.leads - (_mixValid ? (sr.invalid || 0) : 0) : 0;
       meV = meR && meR.leads ? +(meMvf / meR.leads * 100).toFixed(1) : null;
       tmV = TL ? +(tMvf / TL * 100).toFixed(1) : null;
+      meN = meMvf + ' of ' + (meR ? meR.leads : 0) + ' leads';
+      tmN = tMvf + ' of ' + TL + ' leads';
     } else if (metric === 'mixq') {
       meV = meR && meR.leads ? meR.expected_pct : null;
       tmV = TL ? +(TE / TL * 100).toFixed(1) : null;
+      meN = meR ? '~' + Math.round(meR.expected_won) + ' expected deals' : '';
+      tmN = '~' + Math.round(TE) + ' expected deals';
     } else if (metric === 'close') {
       meV = meR && meR.leads ? meR.actual_pct : null;
       tmV = TL ? +(TW / TL * 100).toFixed(1) : null;
+      meN = meR ? meR.won + ' deals / ' + meR.leads + ' leads' : '';
+      tmN = TW + ' deals / ' + TL + ' leads';
     } else if (metric === 'idx') {
       meV = meR && meR.expected_won > 0 ? meR.index_pct : null;
       tmV = TE > 0 ? +((TW / TE - 1) * 100).toFixed(1) : null;
+      meN = meR ? meR.won + ' actual vs ' + meR.expected_won + ' expected' : '';
+      tmN = TW + ' actual vs ' + TE.toFixed(1) + ' expected';
     }
     labels.push((mix.month_label || k).split(' ')[0]);
     meVals.push(meV);
     teamVals.push(tmV);
+    meNotes.push(meN);
+    tmNotes.push(tmN);
   });
-  return { labels, meVals, teamVals };
+  return { labels, meVals, teamVals, meNotes, tmNotes, isPct };
 }
 
 function renderMixTrend() {
   const canvas = document.getElementById('mix-trend-canvas');
   if (!canvas || typeof Chart === 'undefined') return;
   const metric = document.getElementById('mix-trend-metric').value;
-  const { labels, meVals, teamVals } = _mixTrendSeries(metric);
+  const { labels, meVals, teamVals, meNotes, tmNotes, isPct } = _mixTrendSeries(metric);
   if (_mixTrendChart) _mixTrendChart.destroy();
+  const unit = isPct ? '%' : '';
   _mixTrendChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
@@ -810,10 +829,16 @@ function renderMixTrend() {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : c.parsed.y + '%') } },
+        tooltip: { callbacks: {
+          label: c => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : c.parsed.y + unit),
+          afterLabel: c => {
+            const notes = c.datasetIndex === 0 ? meNotes : tmNotes;
+            return notes[c.dataIndex] || '';
+          },
+        } },
       },
       scales: {
-        y: { ticks: { callback: v => v + '%', font: { size: 11 } } },
+        y: { ticks: { callback: v => v + unit, font: { size: 11 } }, beginAtZero: !isPct },
         x: { ticks: { font: { size: 11 } }, grid: { display: false } },
       },
     },
