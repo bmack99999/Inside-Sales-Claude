@@ -158,6 +158,25 @@
       <div class="boss-ratio-sub" id="mix-index-sub"></div>
     </div>
   </div>
+  <div class="chart-card" style="margin-bottom:20px;padding:24px 28px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div class="chart-title" style="margin-bottom:2px;">Trend — Me vs Team</div>
+        <div style="font-size:12px;color:#9ca3af;letter-spacing:.03em;">Month by month since March</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label for="mix-trend-metric" style="font-size:12px;color:#666">Metric:</label>
+        <select id="mix-trend-metric" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+          <option value="mvf">MVF share of intake</option>
+          <option value="mixq">Mix quality (expected close %)</option>
+          <option value="close">Actual close %</option>
+          <option value="idx">Vs expected % (me)</option>
+        </select>
+      </div>
+    </div>
+    <div style="position:relative;height:260px"><canvas id="mix-trend-canvas"></canvas></div>
+  </div>
+
   <div class="log-table-card" style="margin-bottom:24px">
     <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <span>Rep Performance Pivot — Leads, Conversion &amp; Close by Source</span>
@@ -170,6 +189,11 @@
         <select id="mix-source-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
           <option value="">All sources</option>
         </select>
+        <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input type="checkbox" id="mix-valid-toggle" style="cursor:pointer">
+          Exclude invalid leads
+        </label>
+        <button id="mix-export-btn" style="padding:4px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Export CSV</button>
       </div>
     </div>
     <table class="log-table" id="mix-table">
@@ -191,9 +215,11 @@
       <tfoot id="mix-tfoot"></tfoot>
     </table>
     <div style="margin-top:8px;font-size:11px;color:#aaa;padding:0 4px">
-      Click any column header to sort · pick a lead source to pivot every column to that source only.
+      Click a rep's row to expand their full source-by-source breakdown · click any column header to sort ·
+      pick a lead source to pivot every column to that source only.
       Expected = what an average closer would produce given the same leads, using team-average
       close rates per source. Beating expected = outperforming your hand.
+      Invalid leads = duplicates, spam, never inquired, support requests, wrong contact info.
     </div>
   </div>
 
@@ -204,6 +230,7 @@
         <tr>
           <th style="text-align:left">Source</th>
           <th>Leads</th>
+          <th>Invalid</th>
           <th>Conv</th>
           <th>Conv%</th>
           <th>Won</th>
@@ -509,8 +536,11 @@ function _monthLabelFromKey(key) {
 let _mixData = null;
 let _mixMonthKey = '';
 let _mixSource = '';
+let _mixValid = false;
 let _mixSortCol = 'index_pct';
 let _mixSortAsc = false;
+let _mixExpanded = new Set();
+let _mixTrendChart = null;
 
 function _activeMix() {
   if (_mixMonthKey && _mixData.monthly && _mixData.monthly[_mixMonthKey]) {
@@ -519,32 +549,78 @@ function _activeMix() {
   return _mixData;
 }
 
-function _mixRateFor(source) {
-  const sr = (_activeMix().source_rates || []).find(s => s.source === source);
-  return sr && sr.leads ? sr.won / sr.leads : 0;
+function _bs4(arr) { return [arr[0] || 0, arr[1] || 0, arr[2] || 0, arr[3] || 0]; }
+
+function _effRates(mix) {
+  // Team close rate per source, honoring the invalid-leads toggle.
+  const m = {};
+  (mix.source_rates || []).forEach(s => {
+    const l = s.leads - (_mixValid ? (s.invalid || 0) : 0);
+    m[s.source] = l > 0 ? s.won / l : 0;
+  });
+  return m;
+}
+
+function _repTotals(r, rates, source) {
+  let L = 0, C = 0, W = 0, E = 0, INV = 0;
+  const bs = r.by_source || {};
+  const keys = source ? (bs[source] ? [source] : []) : Object.keys(bs);
+  keys.forEach(s => {
+    const [l, c, w, inv] = _bs4(bs[s]);
+    const le = Math.max(0, l - (_mixValid ? inv : 0));
+    L += le; C += c; W += w; INV += inv; E += le * (rates[s] || 0);
+  });
+  return {
+    name: r.name, is_me: r.is_me, leads: L, converted: C, won: W, invalid: INV,
+    conv_pct: L ? +(C / L * 100).toFixed(1) : 0,
+    actual_pct: L ? +(W / L * 100).toFixed(1) : 0,
+    expected_won: +E.toFixed(1),
+    expected_pct: L ? +(E / L * 100).toFixed(1) : 0,
+    index_pct: E > 0 ? +((W / E - 1) * 100).toFixed(1) : 0,
+  };
 }
 
 function _mixRows() {
-  // Build display rows for the current source filter.
-  return _activeMix().reps.map(r => {
-    if (!_mixSource) {
-      return { name: r.name, is_me: r.is_me, leads: r.leads, converted: r.converted,
-               won: r.won, conv_pct: r.conv_pct, actual_pct: r.actual_pct,
-               expected_won: r.expected_won, expected_pct: r.expected_pct,
-               index_pct: r.index_pct };
-    }
-    const bs = (r.by_source || {})[_mixSource] || [0, 0, 0];
-    const [l, c, w] = bs;
-    const exp = l * _mixRateFor(_mixSource);
-    return {
-      name: r.name, is_me: r.is_me, leads: l, converted: c, won: w,
-      conv_pct: l ? +(c / l * 100).toFixed(1) : 0,
-      actual_pct: l ? +(w / l * 100).toFixed(1) : 0,
-      expected_won: +exp.toFixed(1),
-      expected_pct: l ? +(exp / l * 100).toFixed(1) : 0,
-      index_pct: exp > 0 ? +((w / exp - 1) * 100).toFixed(1) : 0,
-    };
-  }).filter(r => r.leads > 0 || r.won > 0);
+  const mix = _activeMix();
+  const rates = _effRates(mix);
+  return (mix.reps || []).map(r => _repTotals(r, rates, _mixSource))
+    .filter(r => r.leads > 0 || r.won > 0);
+}
+
+function _pctCell(v, leads) { return leads ? v + '%' : '—'; }
+
+function _repDetailHTML(name) {
+  const mix = _activeMix();
+  const rates = _effRates(mix);
+  const rep = (mix.reps || []).find(r => r.name === name);
+  if (!rep) return '';
+  const rows = Object.entries(rep.by_source || {}).map(([s, arr]) => {
+    const [l, c, w, inv] = _bs4(arr);
+    const le = Math.max(0, l - (_mixValid ? inv : 0));
+    const exp = le * (rates[s] || 0);
+    return { s, le, c, w, inv, exp };
+  }).filter(r => r.le > 0 || r.w > 0).sort((a, b) => b.le - a.le);
+  const inner = rows.map(r => `<tr>
+    <td style="text-align:left;padding:3px 8px">${r.s}</td>
+    <td style="padding:3px 8px">${r.le}</td>
+    <td style="padding:3px 8px">${r.c}</td>
+    <td style="padding:3px 8px">${_pctCell(r.le ? (r.c / r.le * 100).toFixed(1) : 0, r.le)}</td>
+    <td style="padding:3px 8px"><strong>${r.w}</strong></td>
+    <td style="padding:3px 8px">${_pctCell(r.le ? (r.w / r.le * 100).toFixed(1) : 0, r.le)}</td>
+    <td style="padding:3px 8px;color:#6b7280">${r.exp.toFixed(1)}</td>
+    <td style="padding:3px 8px;color:${r.w >= r.exp ? '#059669' : '#dc2626'}">${r.exp > 0 ? ((r.w / r.exp - 1) * 100).toFixed(0) + '%' : '—'}</td>
+  </tr>`).join('');
+  return `<tr class="mix-detail-row"><td colspan="10" style="background:#f8fafc;padding:8px 16px 12px">
+    <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead><tr style="color:#6b7280;text-align:right">
+        <th style="text-align:left;padding:3px 8px">Source</th><th style="padding:3px 8px">Leads</th>
+        <th style="padding:3px 8px">Conv</th><th style="padding:3px 8px">Conv%</th>
+        <th style="padding:3px 8px">Won</th><th style="padding:3px 8px">Close%</th>
+        <th style="padding:3px 8px">Exp</th><th style="padding:3px 8px">Vs Exp</th>
+      </tr></thead>
+      <tbody style="text-align:right">${inner}</tbody>
+    </table>
+  </td></tr>`;
 }
 
 function renderMixTable() {
@@ -565,21 +641,31 @@ function renderMixTable() {
   });
 
   document.getElementById('mix-tbody').innerHTML = rows.map((r, i) => {
-    const rowCls = r.is_me ? 'style="background:#e8f0fe;font-weight:600"' : '';
+    const rowCls = r.is_me ? 'background:#e8f0fe;font-weight:600;' : '';
     const pos = r.index_pct >= 0;
-    return `<tr ${rowCls}>
+    const open = _mixExpanded.has(r.name);
+    const caret = open ? '▾' : '▸';
+    return `<tr style="${rowCls}cursor:pointer" data-rep="${r.name}" title="Click to expand source breakdown">
       <td style="color:#888;font-size:12px">${i + 1}</td>
-      <td style="text-align:left">${r.is_me ? r.name + ' ◀' : r.name}</td>
+      <td style="text-align:left"><span style="color:#9ca3af;font-size:10px">${caret}</span> ${r.is_me ? r.name + ' ◀' : r.name}</td>
       <td>${r.leads}</td>
       <td>${r.converted}</td>
-      <td>${r.conv_pct}%</td>
+      <td>${_pctCell(r.conv_pct, r.leads)}</td>
       <td><strong>${r.won}</strong></td>
-      <td>${r.actual_pct}%</td>
+      <td>${_pctCell(r.actual_pct, r.leads)}</td>
       <td style="color:#6b7280">${r.expected_won}</td>
-      <td style="color:#6b7280">${r.expected_pct}%</td>
-      <td style="color:${pos ? '#059669' : '#dc2626'};font-weight:600">${pos ? '+' : ''}${r.index_pct}%</td>
-    </tr>`;
+      <td style="color:#6b7280">${_pctCell(r.expected_pct, r.leads)}</td>
+      <td style="color:${pos ? '#059669' : '#dc2626'};font-weight:600">${r.expected_won > 0 ? (pos ? '+' : '') + r.index_pct + '%' : '—'}</td>
+    </tr>` + (open ? _repDetailHTML(r.name) : '');
   }).join('');
+
+  document.querySelectorAll('#mix-tbody tr[data-rep]').forEach(tr => {
+    tr.onclick = () => {
+      const n = tr.dataset.rep;
+      if (_mixExpanded.has(n)) _mixExpanded.delete(n); else _mixExpanded.add(n);
+      renderMixTable();
+    };
+  });
 
   const tl = rows.reduce((s, r) => s + r.leads, 0);
   const tc = rows.reduce((s, r) => s + r.converted, 0);
@@ -614,9 +700,10 @@ function applyMixWindow() {
     }
   }
 
-  // Summary cards (my numbers for the selected window)
-  const me = (mix.reps || []).find(r => r.is_me);
-  if (me) {
+  // Summary cards (my numbers for the selected window, honoring the toggle)
+  const meRep = (mix.reps || []).find(r => r.is_me);
+  const me = meRep ? _repTotals(meRep, _effRates(mix), '') : null;
+  if (me && me.leads) {
     document.getElementById('mix-actual').textContent = me.actual_pct + '%';
     document.getElementById('mix-actual-sub').textContent = me.won + ' deals / ' + me.leads + ' leads';
     document.getElementById('mix-expected').textContent = me.expected_pct + '%';
@@ -648,15 +735,118 @@ function applyMixWindow() {
 
   renderMixTable();
 
-  // Team totals by source
-  document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => `<tr>
-    <td style="text-align:left">${s.source}</td>
-    <td>${s.leads}</td>
-    <td>${s.converted != null ? s.converted : '—'}</td>
-    <td>${s.conv_pct != null ? s.conv_pct + '%' : '—'}</td>
-    <td>${s.won}</td>
-    <td><strong>${s.rate_pct}%</strong></td>
-  </tr>`).join('');
+  // Team totals by source (honoring the toggle)
+  document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => {
+    const le = s.leads - (_mixValid ? (s.invalid || 0) : 0);
+    const conv = s.converted != null ? s.converted : 0;
+    return `<tr>
+      <td style="text-align:left">${s.source}</td>
+      <td>${le}</td>
+      <td style="color:${_mixValid ? '#dc2626' : '#9ca3af'}">${s.invalid || 0}${_mixValid ? ' excl.' : ''}</td>
+      <td>${conv}</td>
+      <td>${le ? (conv / le * 100).toFixed(1) + '%' : '—'}</td>
+      <td>${s.won}</td>
+      <td><strong>${le ? (s.won / le * 100).toFixed(1) + '%' : '—'}</strong></td>
+    </tr>`;
+  }).join('');
+}
+
+function _mixTrendSeries(metric) {
+  const monthly = (_mixData && _mixData.monthly) || {};
+  const keys = Object.keys(monthly).sort();
+  const labels = [], meVals = [], teamVals = [];
+  keys.forEach(k => {
+    const mix = monthly[k];
+    const rates = _effRates(mix);
+    const rows = (mix.reps || []).map(r => _repTotals(r, rates, ''));
+    const meR = rows.find(r => r.is_me);
+    const TL = rows.reduce((a, r) => a + r.leads, 0);
+    const TW = rows.reduce((a, r) => a + r.won, 0);
+    const TE = rows.reduce((a, r) => a + r.expected_won, 0);
+    let meV = null, tmV = null;
+    if (metric === 'mvf') {
+      const meBs = ((mix.reps || []).find(r => r.is_me) || {}).by_source || {};
+      const [ml, , , minv] = _bs4(meBs['MVF'] || []);
+      const meMvf = Math.max(0, ml - (_mixValid ? minv : 0));
+      const sr = (mix.source_rates || []).find(s => s.source === 'MVF');
+      const tMvf = sr ? sr.leads - (_mixValid ? (sr.invalid || 0) : 0) : 0;
+      meV = meR && meR.leads ? +(meMvf / meR.leads * 100).toFixed(1) : null;
+      tmV = TL ? +(tMvf / TL * 100).toFixed(1) : null;
+    } else if (metric === 'mixq') {
+      meV = meR && meR.leads ? meR.expected_pct : null;
+      tmV = TL ? +(TE / TL * 100).toFixed(1) : null;
+    } else if (metric === 'close') {
+      meV = meR && meR.leads ? meR.actual_pct : null;
+      tmV = TL ? +(TW / TL * 100).toFixed(1) : null;
+    } else if (metric === 'idx') {
+      meV = meR && meR.expected_won > 0 ? meR.index_pct : null;
+      tmV = TE > 0 ? +((TW / TE - 1) * 100).toFixed(1) : null;
+    }
+    labels.push((mix.month_label || k).split(' ')[0]);
+    meVals.push(meV);
+    teamVals.push(tmV);
+  });
+  return { labels, meVals, teamVals };
+}
+
+function renderMixTrend() {
+  const canvas = document.getElementById('mix-trend-canvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const metric = document.getElementById('mix-trend-metric').value;
+  const { labels, meVals, teamVals } = _mixTrendSeries(metric);
+  if (_mixTrendChart) _mixTrendChart.destroy();
+  _mixTrendChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Me', data: meVals, borderColor: '#1f3a5f', backgroundColor: '#1f3a5f',
+          borderWidth: 2.5, tension: 0.25, pointRadius: 4, spanGaps: true },
+        { label: 'Team avg', data: teamVals, borderColor: '#9ca3af', backgroundColor: '#9ca3af',
+          borderWidth: 2, borderDash: [6, 4], tension: 0.25, pointRadius: 3, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : c.parsed.y + '%') } },
+      },
+      scales: {
+        y: { ticks: { callback: v => v + '%', font: { size: 11 } } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function exportMixCSV() {
+  const rows = _mixRows();
+  rows.sort((a, b) => _mixSortCol === 'name'
+    ? a.name.localeCompare(b.name)
+    : (b[_mixSortCol] || 0) - (a[_mixSortCol] || 0));
+  const head = ['Rank', 'Rep', 'Leads', 'Converted', 'Conv %', 'Won', 'Close %', 'Expected Won', 'Expected %', 'Vs Expected %'];
+  const lines = [head.join(',')];
+  rows.forEach((r, i) => {
+    lines.push([i + 1, '"' + r.name + '"', r.leads, r.converted, r.conv_pct, r.won,
+                r.actual_pct, r.expected_won, r.expected_pct, r.index_pct].join(','));
+  });
+  const tl = rows.reduce((s, r) => s + r.leads, 0);
+  const tc = rows.reduce((s, r) => s + r.converted, 0);
+  const tw = rows.reduce((s, r) => s + r.won, 0);
+  const te = rows.reduce((s, r) => s + r.expected_won, 0);
+  lines.push(['', 'TEAM', tl, tc, tl ? (tc / tl * 100).toFixed(1) : 0, tw,
+              tl ? (tw / tl * 100).toFixed(1) : 0, te.toFixed(1),
+              tl ? (te / tl * 100).toFixed(1) : 0, ''].join(','));
+  const period = _mixMonthKey || 'since-mar-1';
+  const src = _mixSource ? _mixSource.replace(/[^A-Za-z0-9]+/g, '-') : 'all-sources';
+  const valid = _mixValid ? '_valid-only' : '';
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `mix_pivot_${period}_${src}${valid}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function renderMixAdjusted(mix) {
@@ -678,6 +868,15 @@ function renderMixAdjusted(mix) {
     renderMixTable();
   };
 
+  document.getElementById('mix-valid-toggle').onchange = (e) => {
+    _mixValid = e.target.checked;
+    applyMixWindow();
+    renderMixTrend();
+  };
+
+  document.getElementById('mix-export-btn').onclick = exportMixCSV;
+  document.getElementById('mix-trend-metric').onchange = renderMixTrend;
+
   // Sortable headers
   document.querySelectorAll('.mix-th-sort').forEach(th => {
     th.onclick = () => {
@@ -689,6 +888,7 @@ function renderMixAdjusted(mix) {
   });
 
   applyMixWindow();
+  renderMixTrend();
 }
 
 function applyTeamMonth(key) {

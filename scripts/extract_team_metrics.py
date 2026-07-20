@@ -65,6 +65,13 @@ def _refresh_team():
 HISTORY_START_YEAR  = 2026
 HISTORY_START_MONTH = 3
 MIX_WINDOW_START    = "2026-03-01"
+# Loss reasons that mean the lead was never a real prospect — excluded from
+# denominators when the KPIs "exclude invalid leads" toggle is on.
+INVALID_LOSS_REASONS = (
+    "'Duplicate lead','Never Inquired','Support Request',"
+    "'Incorrect contact information','Spam','Not A Business',"
+    "'Not A Restaurant','Vendor Soliciting'"
+)
 OUTPUT_PATH = "dashboard/data/team_metrics.json"
 
 
@@ -199,6 +206,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     leads = defaultdict(lambda: defaultdict(int))   # oid -> source -> count
     conv  = defaultdict(lambda: defaultdict(int))
     wins  = defaultdict(lambda: defaultdict(int))
+    inval = defaultdict(lambda: defaultdict(int))
 
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
@@ -224,9 +232,19 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     ):
         wins[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
 
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND Status='Unqualified' "
+        f"AND Loss_Reason__c IN ({INVALID_LOSS_REASONS}) "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        inval[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
     src_leads = defaultdict(int)
     src_conv  = defaultdict(int)
     src_wins  = defaultdict(int)
+    src_inval = defaultdict(int)
     for oid in TEAM:
         for s, c in leads[oid].items():
             src_leads[s] += c
@@ -234,6 +252,8 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
             src_conv[s] += c
         for s, c in wins[oid].items():
             src_wins[s] += c
+        for s, c in inval[oid].items():
+            src_inval[s] += c
     rates = {s: src_wins[s] / src_leads[s] for s in src_leads if src_leads[s]}
 
     all_sources = sorted(set(src_leads) | set(src_wins),
@@ -250,13 +270,14 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
         by_source = {}
         for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]):
             by_source[s] = [leads[oid].get(s, 0), conv[oid].get(s, 0),
-                            wins[oid].get(s, 0)]
+                            wins[oid].get(s, 0), inval[oid].get(s, 0)]
         reps.append({
             "name": name,
             "is_me": oid == MY_ID,
             "leads": tl,
             "converted": tc,
             "won": tw,
+            "invalid": sum(inval[oid].values()),
             "conv_pct":     round(tc / tl * 100, 1) if tl else 0,
             "actual_pct":   round(tw / tl * 100, 1) if tl else 0,
             "expected_won": round(expected, 1),
@@ -270,7 +291,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
 
     source_rates = [
         {"source": s, "leads": src_leads.get(s, 0), "converted": src_conv.get(s, 0),
-         "won": src_wins.get(s, 0),
+         "won": src_wins.get(s, 0), "invalid": src_inval.get(s, 0),
          "conv_pct": round(src_conv.get(s, 0) / src_leads[s] * 100, 1) if src_leads.get(s) else 0,
          "rate_pct": round(rates.get(s, 0) * 100, 1)}
         for s in all_sources
