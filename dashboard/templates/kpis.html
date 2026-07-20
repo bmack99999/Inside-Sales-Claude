@@ -140,7 +140,7 @@
 
 <!-- ── Mix-Adjusted Performance ────────────────────────────────────────────── -->
 <div id="mix-section" style="display:none">
-  <div class="section-divider">Mix-Adjusted Performance — since <span id="mix-window">Mar 1</span></div>
+  <div class="section-divider">Mix-Adjusted Performance — <span id="mix-window">since Mar 1</span></div>
   <div class="boss-ratio-row" style="margin-bottom:12px">
     <div class="boss-ratio-card">
       <div class="boss-ratio-label">My Close Rate</div>
@@ -161,7 +161,11 @@
   <div class="log-table-card" style="margin-bottom:24px">
     <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <span>Rep Performance Pivot — Leads, Conversion &amp; Close by Source</span>
-      <div style="display:flex;align-items:center;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label for="mix-month-select" style="font-size:12px;color:#666">Period:</label>
+        <select id="mix-month-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+          <option value="">Since Mar 1</option>
+        </select>
         <label for="mix-source-select" style="font-size:12px;color:#666">Lead source:</label>
         <select id="mix-source-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
           <option value="">All sources</option>
@@ -503,18 +507,26 @@ function _monthLabelFromKey(key) {
 }
 
 let _mixData = null;
+let _mixMonthKey = '';
 let _mixSource = '';
 let _mixSortCol = 'index_pct';
 let _mixSortAsc = false;
 
+function _activeMix() {
+  if (_mixMonthKey && _mixData.monthly && _mixData.monthly[_mixMonthKey]) {
+    return _mixData.monthly[_mixMonthKey];
+  }
+  return _mixData;
+}
+
 function _mixRateFor(source) {
-  const sr = (_mixData.source_rates || []).find(s => s.source === source);
+  const sr = (_activeMix().source_rates || []).find(s => s.source === source);
   return sr && sr.leads ? sr.won / sr.leads : 0;
 }
 
 function _mixRows() {
   // Build display rows for the current source filter.
-  return _mixData.reps.map(r => {
+  return _activeMix().reps.map(r => {
     if (!_mixSource) {
       return { name: r.name, is_me: r.is_me, leads: r.leads, converted: r.converted,
                won: r.won, conv_pct: r.conv_pct, actual_pct: r.actual_pct,
@@ -587,19 +599,23 @@ function renderMixTable() {
   </tr>`;
 }
 
-function renderMixAdjusted(mix) {
-  if (!mix || !mix.reps || !mix.reps.length) return;
-  _mixData = mix;
-  document.getElementById('mix-section').style.display = '';
+function applyMixWindow() {
+  const mix = _activeMix();
 
-  const ws = mix.window_start || '';
-  if (ws) {
-    const [y, m, d] = ws.split('-').map(Number);
-    document.getElementById('mix-window').textContent =
-      new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Header window label
+  if (_mixMonthKey && mix.month_label) {
+    document.getElementById('mix-window').textContent = mix.month_label;
+  } else {
+    const ws = mix.window_start || '';
+    if (ws) {
+      const [y, m, d] = ws.split('-').map(Number);
+      document.getElementById('mix-window').textContent = 'since ' +
+        new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
   }
 
-  const me = mix.reps.find(r => r.is_me);
+  // Summary cards (my numbers for the selected window)
+  const me = (mix.reps || []).find(r => r.is_me);
   if (me) {
     document.getElementById('mix-actual').textContent = me.actual_pct + '%';
     document.getElementById('mix-actual-sub').textContent = me.won + ' deals / ' + me.leads + ' leads';
@@ -612,24 +628,23 @@ function renderMixAdjusted(mix) {
     document.getElementById('mix-index-sub').textContent = pos
       ? 'closing above what my lead mix predicts'
       : 'below what my lead mix predicts';
+  } else {
+    document.getElementById('mix-actual').textContent = '—';
+    document.getElementById('mix-actual-sub').textContent = 'no activity this period';
+    document.getElementById('mix-expected').textContent = '—';
+    document.getElementById('mix-expected-sub').textContent = '';
+    const idx = document.getElementById('mix-index');
+    idx.textContent = '—'; idx.style.color = '';
+    document.getElementById('mix-index-sub').textContent = '';
   }
 
-  // Source filter dropdown
-  const select = document.getElementById('mix-source-select');
+  // Source dropdown options for this window (keep selection if still valid)
+  const srcSelect = document.getElementById('mix-source-select');
   const sources = mix.sources || (mix.source_rates || []).map(s => s.source);
-  select.innerHTML = '<option value="">All sources</option>' +
+  if (!sources.includes(_mixSource)) _mixSource = '';
+  srcSelect.innerHTML = '<option value="">All sources</option>' +
     sources.map(s => `<option value="${s}">${s}</option>`).join('');
-  select.onchange = () => { _mixSource = select.value; renderMixTable(); };
-
-  // Sortable headers
-  document.querySelectorAll('.mix-th-sort').forEach(th => {
-    th.onclick = () => {
-      const col = th.dataset.col;
-      if (_mixSortCol === col) { _mixSortAsc = !_mixSortAsc; }
-      else { _mixSortCol = col; _mixSortAsc = col === 'name'; }
-      renderMixTable();
-    };
-  });
+  srcSelect.value = _mixSource;
 
   renderMixTable();
 
@@ -642,6 +657,38 @@ function renderMixAdjusted(mix) {
     <td>${s.won}</td>
     <td><strong>${s.rate_pct}%</strong></td>
   </tr>`).join('');
+}
+
+function renderMixAdjusted(mix) {
+  if (!mix || !mix.reps || !mix.reps.length) return;
+  _mixData = mix;
+  document.getElementById('mix-section').style.display = '';
+
+  // Month dropdown (newest month first, cumulative default)
+  const monthSelect = document.getElementById('mix-month-select');
+  const monthly = mix.monthly || {};
+  const keys = Object.keys(monthly).sort().reverse();
+  monthSelect.innerHTML = '<option value="">Since Mar 1</option>' +
+    keys.map(k => `<option value="${k}">${monthly[k].month_label || k}</option>`).join('');
+  monthSelect.value = _mixMonthKey;
+  monthSelect.onchange = () => { _mixMonthKey = monthSelect.value; applyMixWindow(); };
+
+  document.getElementById('mix-source-select').onchange = (e) => {
+    _mixSource = e.target.value;
+    renderMixTable();
+  };
+
+  // Sortable headers
+  document.querySelectorAll('.mix-th-sort').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (_mixSortCol === col) { _mixSortAsc = !_mixSortAsc; }
+      else { _mixSortCol = col; _mixSortAsc = col === 'name'; }
+      renderMixTable();
+    };
+  });
+
+  applyMixWindow();
 }
 
 function applyTeamMonth(key) {

@@ -185,14 +185,17 @@ def _pull_month(y, m, is_current):
     }
 
 
-def _pull_mix_adjusted():
-    """Mix-adjusted close rates since MIX_WINDOW_START, with a full per-rep
+def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
+    """Mix-adjusted close rates for [start, end), with a full per-rep
     per-source breakdown (leads / converted / won) for the KPIs pivot table.
 
     Expected wins per rep = sum over sources of
     (rep's leads from source x team-average close rate for source).
     Close rate basis: deals closed in window / leads received in window.
     """
+    lead_end = f" AND CreatedDate < {end}T00:00:00Z" if end else ""
+    win_end  = f" AND CloseDate < {end}" if end else ""
+
     leads = defaultdict(lambda: defaultdict(int))   # oid -> source -> count
     conv  = defaultdict(lambda: defaultdict(int))
     wins  = defaultdict(lambda: defaultdict(int))
@@ -200,7 +203,7 @@ def _pull_mix_adjusted():
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
         f"WHERE OwnerId IN ({TEAM_IDS}) "
-        f"AND CreatedDate >= {MIX_WINDOW_START}T00:00:00Z "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         leads[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -208,7 +211,7 @@ def _pull_mix_adjusted():
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND IsConverted=true "
-        f"AND CreatedDate >= {MIX_WINDOW_START}T00:00:00Z "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         conv[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -216,7 +219,7 @@ def _pull_mix_adjusted():
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Closed Won' "
-        f"AND CloseDate >= {MIX_WINDOW_START} "
+        f"AND CloseDate >= {start}{win_end} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         wins[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -272,8 +275,25 @@ def _pull_mix_adjusted():
          "rate_pct": round(rates.get(s, 0) * 100, 1)}
         for s in all_sources
     ]
-    return {"window_start": MIX_WINDOW_START, "reps": reps,
+    return {"window_start": start, "reps": reps,
             "source_rates": source_rates, "sources": all_sources}
+
+
+def _pull_mix_all_windows():
+    """Cumulative-since-March mix data plus one snapshot per month,
+    so the KPIs pivot can offer a month dropdown like the leaderboard."""
+    out = _pull_mix_adjusted()
+    today = date.today()
+    monthly = {}
+    for y, m in _iter_months(HISTORY_START_YEAR, HISTORY_START_MONTH,
+                             today.year, today.month):
+        start, end = _month_bounds(y, m)
+        key = f"{y:04d}-{m:02d}"
+        snap = _pull_mix_adjusted(start, end)
+        snap["month_label"] = date(y, m, 1).strftime("%B %Y")
+        monthly[key] = snap
+    out["monthly"] = monthly
+    return out
 
 
 def main():
@@ -311,8 +331,8 @@ def main():
 
     mix_adjusted = None
     try:
-        print("  Mix-adjusted close rates...")
-        mix_adjusted = _pull_mix_adjusted()
+        print("  Mix-adjusted close rates (cumulative + monthly)...")
+        mix_adjusted = _pull_mix_all_windows()
     except SFQueryError as e:
         print(f"  WARN: mix-adjusted pull failed ({e}) — continuing without it.",
               file=sys.stderr)
