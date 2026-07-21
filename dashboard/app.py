@@ -804,6 +804,18 @@ def api_templates_delete():
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 
+# Shareable read-only team view (for management) — token-gated, no nav,
+# shows only the mix-adjusted pivot. Rotate by setting TEAM_VIEW_KEY on Railway.
+TEAM_VIEW_KEY = os.environ.get('TEAM_VIEW_KEY', 'tv_EkqBFEGI6Af25jk-QzpJvJCouFxYyD_a')
+
+
+@app.route('/team-view')
+def team_view():
+    if request.args.get('key') != TEAM_VIEW_KEY:
+        return 'Not found', 404
+    return render_template('team_view.html')
+
+
 @app.route('/')
 @app.route('/kpis')
 def kpis():

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Inside Sales — Lead Flow &amp; Performance</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div style="max-width:1100px;margin:0 auto;padding:24px 20px 48px">
+
+  <div style="margin-bottom:4px;font-size:22px;font-weight:800;color:#1f3a5f">Inside Sales — Lead Flow &amp; Mix-Adjusted Performance</div>
+  <div style="font-size:13px;color:#6b7280;margin-bottom:24px">
+    Prepared by Bryce Mack · data pulled live from Salesforce twice daily · <span id="tv-refreshed"></span>
+  </div>
+
+  <div id="mix-section" style="display:none">
+    <div class="section-divider">Mix-Adjusted Performance — <span id="mix-window">since Mar 1</span></div>
+    <div class="boss-ratio-row" style="margin-bottom:12px">
+      <div class="boss-ratio-card">
+        <div class="boss-ratio-label">Bryce's Close Rate</div>
+        <div class="boss-ratio-value" id="mix-actual">—</div>
+        <div class="boss-ratio-sub" id="mix-actual-sub"></div>
+      </div>
+      <div class="boss-ratio-card">
+        <div class="boss-ratio-label">Expected From Bryce's Lead Mix</div>
+        <div class="boss-ratio-value" id="mix-expected" style="color:#6b7280">—</div>
+        <div class="boss-ratio-sub" id="mix-expected-sub"></div>
+      </div>
+      <div class="boss-ratio-card">
+        <div class="boss-ratio-label">Vs Expected</div>
+        <div class="boss-ratio-value" id="mix-index">—</div>
+        <div class="boss-ratio-sub" id="mix-index-sub"></div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:20px;padding:24px 28px 20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="chart-title" style="margin-bottom:2px;">Trend — Bryce vs Team</div>
+          <div style="font-size:12px;color:#9ca3af;letter-spacing:.03em;">Month by month since March</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label for="mix-trend-metric" style="font-size:12px;color:#666">Metric:</label>
+          <select id="mix-trend-metric" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+            <option value="expdeals">Expected deals (mix value)</option>
+            <option value="deals">Deals closed</option>
+            <option value="mvf">MVF share of intake</option>
+            <option value="mixq">Mix quality (expected close %)</option>
+            <option value="close">Actual close %</option>
+            <option value="idx">Vs expected % (Bryce)</option>
+          </select>
+        </div>
+      </div>
+      <div style="position:relative;height:260px"><canvas id="mix-trend-canvas"></canvas></div>
+      <div style="margin-top:10px;font-size:11px;color:#aaa">
+        Expected deals = the deals a rep's lead flow should produce if closed at team average rates per source.
+        It measures the value of the hand dealt, independent of the rep playing it.
+      </div>
+    </div>
+
+    <div class="log-table-card" style="margin-bottom:24px">
+      <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>Rep Performance Pivot — Leads, Conversion &amp; Close by Source</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label for="mix-month-select" style="font-size:12px;color:#666">Period:</label>
+          <select id="mix-month-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+            <option value="">Since Mar 1</option>
+          </select>
+          <label for="mix-source-select" style="font-size:12px;color:#666">Lead source:</label>
+          <select id="mix-source-select" style="padding:4px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">
+            <option value="">All sources</option>
+          </select>
+          <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type="checkbox" id="mix-valid-toggle" style="cursor:pointer">
+            Exclude invalid leads
+          </label>
+          <button id="mix-export-btn" style="padding:4px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Export CSV</button>
+        </div>
+      </div>
+      <table class="log-table" id="mix-table">
+        <thead>
+          <tr>
+            <th style="text-align:left;width:30px">#</th>
+            <th class="mix-th-sort" data-col="name"         style="text-align:left;cursor:pointer">Rep</th>
+            <th class="mix-th-sort" data-col="leads"        style="cursor:pointer">Leads</th>
+            <th class="mix-th-sort" data-col="converted"    style="cursor:pointer">Conv</th>
+            <th class="mix-th-sort" data-col="conv_pct"     style="cursor:pointer">Conv%</th>
+            <th class="mix-th-sort" data-col="won"          style="cursor:pointer">Won</th>
+            <th class="mix-th-sort" data-col="actual_pct"   style="cursor:pointer">Close%</th>
+            <th class="mix-th-sort" data-col="expected_won" style="cursor:pointer">Exp Won</th>
+            <th class="mix-th-sort" data-col="expected_pct" style="cursor:pointer">Exp%</th>
+            <th class="mix-th-sort" data-col="index_pct"    style="cursor:pointer">Vs Exp</th>
+          </tr>
+        </thead>
+        <tbody id="mix-tbody"></tbody>
+        <tfoot id="mix-tfoot"></tfoot>
+      </table>
+      <div style="margin-top:8px;font-size:11px;color:#aaa;padding:0 4px">
+        Click a rep's row to expand their full source-by-source breakdown · click any column header to sort ·
+        pick a lead source to pivot every column to that source only.
+        Expected = what an average closer would produce given the same leads, using team-average
+        close rates per source. Grayed Vs Exp values = small sample, read with caution.
+        Invalid leads = duplicates, spam, never inquired, support requests, wrong contact info.
+      </div>
+    </div>
+
+    <div class="log-table-card" style="margin-bottom:24px">
+      <div class="log-table-title">Team Totals by Lead Source</div>
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th style="text-align:left">Source</th>
+            <th>Leads</th>
+            <th>Invalid</th>
+            <th>Conv</th>
+            <th>Conv%</th>
+            <th>Won</th>
+            <th>Close%</th>
+          </tr>
+        </thead>
+        <tbody id="mix-src-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tv-error" style="display:none;color:#6b7280;font-size:14px;padding:40px;text-align:center">
+    Could not load data. Please try again in a minute.
+  </div>
+</div>
+
+<script>window.MIX_VIEW_LABELS = { me: 'Bryce', possessive: "Bryce's" };</script>
+<script src="/static/mix_pivot.js"></script>
+<script>
+fetch('/api/team_metrics')
+  .then(r => r.json())
+  .then(data => {
+    if (data.error || !data.mix_adjusted) {
+      document.getElementById('tv-error').style.display = '';
+      return;
+    }
+    document.getElementById('tv-refreshed').textContent = data.refreshed_at ? 'as of ' + data.refreshed_at : '';
+    renderMixAdjusted(data.mix_adjusted);
+  })
+  .catch(() => { document.getElementById('tv-error').style.display = ''; });
+</script>
+</body>
+</html>
