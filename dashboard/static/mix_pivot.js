@@ -169,10 +169,13 @@ function applyMixWindow() {
     }
   }
 
-  // Summary cards (my numbers for the selected window, honoring the toggle)
+  // Summary cards (my numbers for the selected window, honoring the toggle).
+  // Not every page has the cards — /team-view shows only the tables.
   const meRep = (mix.reps || []).find(r => r.is_me);
   const me = meRep ? _repTotals(meRep, _effRates(mix), '') : null;
-  if (me && me.leads) {
+  if (!document.getElementById('mix-actual')) {
+    // no cards on this page
+  } else if (me && me.leads) {
     document.getElementById('mix-actual').textContent = me.actual_pct + '%';
     document.getElementById('mix-actual-sub').textContent = me.won + ' deals / ' + me.leads + ' leads';
     document.getElementById('mix-expected').textContent = me.expected_pct + '%';
