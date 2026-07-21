@@ -203,8 +203,18 @@ function applyMixWindow() {
   srcSelect.value = _mixSource;
 
   renderMixTable();
+  renderMixSrcTable();
+}
 
-  // Team totals by source (honoring the toggle)
+let _mixSrcMonthKey = '';
+
+function renderMixSrcTable() {
+  // Team totals by source. If the card has its own Period selector, it uses
+  // that window; otherwise it follows the pivot's Period dropdown.
+  const sel = document.getElementById('mix-src-month-select');
+  const key = sel ? _mixSrcMonthKey : _mixMonthKey;
+  const mix = (key && _mixData.monthly && _mixData.monthly[key])
+    ? _mixData.monthly[key] : _mixData;
   document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => {
     const le = s.leads - (_mixValid ? (s.invalid || 0) : 0);
     const conv = s.converted != null ? s.converted : 0;
@@ -373,7 +383,17 @@ function renderMixAdjusted(mix) {
   };
 
   document.getElementById('mix-export-btn').onclick = exportMixCSV;
-  document.getElementById('mix-trend-metric').onchange = renderMixTrend;
+  const trendMetric = document.getElementById('mix-trend-metric');
+  if (trendMetric) trendMetric.onchange = renderMixTrend;
+
+  // Optional standalone Period selector on the source-totals card
+  const srcMonthSelect = document.getElementById('mix-src-month-select');
+  if (srcMonthSelect) {
+    srcMonthSelect.innerHTML = '<option value="">Since Mar 1</option>' +
+      keys.map(k => `<option value="${k}">${monthly[k].month_label || k}</option>`).join('');
+    srcMonthSelect.value = _mixSrcMonthKey;
+    srcMonthSelect.onchange = () => { _mixSrcMonthKey = srcMonthSelect.value; renderMixSrcTable(); };
+  }
 
   // Sortable headers
   document.querySelectorAll('.mix-th-sort').forEach(th => {
