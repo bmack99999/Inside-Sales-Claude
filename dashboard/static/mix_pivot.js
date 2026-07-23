@@ -6,6 +6,7 @@ let _mixData = null;
 let _mixMonthKey = '';
 let _mixSource = '';
 let _mixValid = false;
+let _mixUW = false;
 let _mixSortCol = 'index_pct';
 let _mixSortAsc = false;
 let _mixExpanded = new Set();
@@ -18,14 +19,15 @@ function _activeMix() {
   return _mixData;
 }
 
-function _bs4(arr) { return [arr[0] || 0, arr[1] || 0, arr[2] || 0, arr[3] || 0]; }
+function _bs4(arr) { return [arr[0] || 0, arr[1] || 0, arr[2] || 0, arr[3] || 0, arr[4] || 0]; }
 
 function _effRates(mix) {
   // Team close rate per source, honoring the invalid-leads toggle.
   const m = {};
   (mix.source_rates || []).forEach(s => {
     const l = s.leads - (_mixValid ? (s.invalid || 0) : 0);
-    m[s.source] = l > 0 ? s.won / l : 0;
+    const w = s.won + (_mixUW ? (s.uw || 0) : 0);
+    m[s.source] = l > 0 ? w / l : 0;
   });
   return m;
 }
@@ -35,9 +37,10 @@ function _repTotals(r, rates, source) {
   const bs = r.by_source || {};
   const keys = source ? (bs[source] ? [source] : []) : Object.keys(bs);
   keys.forEach(s => {
-    const [l, c, w, inv] = _bs4(bs[s]);
+    const [l, c, w, inv, u] = _bs4(bs[s]);
     const le = Math.max(0, l - (_mixValid ? inv : 0));
-    L += le; C += c; W += w; INV += inv; E += le * (rates[s] || 0);
+    const we = w + (_mixUW ? u : 0);
+    L += le; C += c; W += we; INV += inv; E += le * (rates[s] || 0);
   });
   return {
     name: r.name, is_me: r.is_me, leads: L, converted: C, won: W, invalid: INV,
@@ -64,7 +67,8 @@ function _repDetailHTML(name) {
   const rep = (mix.reps || []).find(r => r.name === name);
   if (!rep) return '';
   const rows = Object.entries(rep.by_source || {}).map(([s, arr]) => {
-    const [l, c, w, inv] = _bs4(arr);
+    const [l, c, w0, inv, u] = _bs4(arr);
+    const w = w0 + (_mixUW ? u : 0);
     const le = Math.max(0, l - (_mixValid ? inv : 0));
     const exp = le * (rates[s] || 0);
     return { s, le, c, w, inv, exp };
@@ -221,14 +225,15 @@ function renderMixSrcTable() {
   document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => {
     const le = s.leads - (_mixValid ? (s.invalid || 0) : 0);
     const conv = s.converted != null ? s.converted : 0;
+    const we = s.won + (_mixUW ? (s.uw || 0) : 0);
     return `<tr>
       <td style="text-align:left">${s.source}</td>
       <td>${le}</td>
       <td style="color:${_mixValid ? '#dc2626' : '#9ca3af'}">${s.invalid || 0}${_mixValid ? ' excl.' : ''}</td>
       <td>${conv}</td>
       <td>${le ? (conv / le * 100).toFixed(1) + '%' : '—'}</td>
-      <td>${s.won}</td>
-      <td><strong>${le ? (s.won / le * 100).toFixed(1) + '%' : '—'}</strong></td>
+      <td>${we}${_mixUW && (s.uw || 0) ? ` <span style="color:#6b7280;font-size:11px">(${s.won}+${s.uw})</span>` : ''}</td>
+      <td><strong>${le ? (we / le * 100).toFixed(1) + '%' : '—'}</strong></td>
     </tr>`;
   }).join('');
 }
@@ -386,6 +391,15 @@ function renderMixAdjusted(mix) {
   };
 
   document.getElementById('mix-export-btn').onclick = exportMixCSV;
+
+  const uwToggle = document.getElementById('mix-uw-toggle');
+  if (uwToggle) {
+    uwToggle.onchange = (e) => {
+      _mixUW = e.target.checked;
+      applyMixWindow();
+      renderMixTrend();
+    };
+  }
   const trendMetric = document.getElementById('mix-trend-metric');
   if (trendMetric) trendMetric.onchange = renderMixTrend;
 

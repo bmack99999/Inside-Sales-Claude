@@ -33,6 +33,10 @@
             <input type="checkbox" id="mix-valid-toggle" style="cursor:pointer">
             Exclude unqualified leads
           </label>
+          <label style="font-size:12px;color:#666;display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type="checkbox" id="mix-uw-toggle" style="cursor:pointer">
+            Include underwriting
+          </label>
           <button id="mix-export-btn" style="padding:4px 10px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer">Export CSV</button>
         </div>
       </div>
@@ -59,7 +63,7 @@
         pick a lead source to pivot every column to that source only.
         Expected = what an average closer would produce given the same leads, using team-average
         close rates per source. Grayed Vs Exp values = small sample, read with caution.
-        Unqualified leads excluded by the toggle = duplicates, spam, never inquired, support requests, wrong contact info.
+        Unqualified leads excluded by the toggle = duplicates, spam, never inquired, support requests, wrong contact info. Include underwriting adds deals currently in underwriting review to the Won counts and every rate, attributed to the month they entered underwriting.
       </div>
     </div>
 

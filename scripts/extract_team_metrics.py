@@ -207,6 +207,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     conv  = defaultdict(lambda: defaultdict(int))
     wins  = defaultdict(lambda: defaultdict(int))
     inval = defaultdict(lambda: defaultdict(int))
+    uw    = defaultdict(lambda: defaultdict(int))
 
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
@@ -241,10 +242,22 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     ):
         inval[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
 
+    # Deals currently in Underwriting Review, attributed to the window in
+    # which they entered UW (LastStageChangeDate).
+    uw_end = f" AND LastStageChangeDate < {end}T00:00:00Z" if end else ""
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Underwriting Review' "
+        f"AND LastStageChangeDate >= {start}T00:00:00Z{uw_end} "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        uw[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
     src_leads = defaultdict(int)
     src_conv  = defaultdict(int)
     src_wins  = defaultdict(int)
     src_inval = defaultdict(int)
+    src_uw    = defaultdict(int)
     for oid in TEAM:
         for s, c in leads[oid].items():
             src_leads[s] += c
@@ -254,9 +267,11 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
             src_wins[s] += c
         for s, c in inval[oid].items():
             src_inval[s] += c
+        for s, c in uw[oid].items():
+            src_uw[s] += c
     rates = {s: src_wins[s] / src_leads[s] for s in src_leads if src_leads[s]}
 
-    all_sources = sorted(set(src_leads) | set(src_wins),
+    all_sources = sorted(set(src_leads) | set(src_wins) | set(src_uw),
                          key=lambda s: -src_leads.get(s, 0))
 
     reps = []
@@ -268,9 +283,10 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
             continue
         expected = sum(c * rates[s] for s, c in leads[oid].items() if s in rates)
         by_source = {}
-        for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]):
+        for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]) | set(uw[oid]):
             by_source[s] = [leads[oid].get(s, 0), conv[oid].get(s, 0),
-                            wins[oid].get(s, 0), inval[oid].get(s, 0)]
+                            wins[oid].get(s, 0), inval[oid].get(s, 0),
+                            uw[oid].get(s, 0)]
         reps.append({
             "name": name,
             "is_me": oid == MY_ID,
@@ -278,6 +294,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
             "converted": tc,
             "won": tw,
             "invalid": sum(inval[oid].values()),
+            "uw": sum(uw[oid].values()),
             "conv_pct":     round(tc / tl * 100, 1) if tl else 0,
             "actual_pct":   round(tw / tl * 100, 1) if tl else 0,
             "expected_won": round(expected, 1),
@@ -292,6 +309,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     source_rates = [
         {"source": s, "leads": src_leads.get(s, 0), "converted": src_conv.get(s, 0),
          "won": src_wins.get(s, 0), "invalid": src_inval.get(s, 0),
+         "uw": src_uw.get(s, 0),
          "conv_pct": round(src_conv.get(s, 0) / src_leads[s] * 100, 1) if src_leads.get(s) else 0,
          "rate_pct": round(rates.get(s, 0) * 100, 1)}
         for s in all_sources
