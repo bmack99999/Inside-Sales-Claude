@@ -322,6 +322,18 @@ def _pull_mix_all_windows():
     """Cumulative-since-March mix data plus one snapshot per month,
     so the KPIs pivot can offer a month dropdown like the leaderboard."""
     out = _pull_mix_adjusted()
+
+    # Point-in-time count of deals sitting in UW right now (no date window),
+    # so the page can show a number that matches "deals in UW today".
+    uw_now = {}
+    for r in sf_query(
+        f"SELECT Owner.Name, COUNT(Id) c FROM Opportunity "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Underwriting Review' "
+        f"GROUP BY Owner.Name"
+    ):
+        uw_now[r["Name"]] = r["c"]
+    out["uw_now"] = {"total": sum(uw_now.values()), "reps": uw_now}
+
     today = date.today()
     monthly = {}
     for y, m in _iter_months(HISTORY_START_YEAR, HISTORY_START_MONTH,

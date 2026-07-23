@@ -392,6 +392,13 @@ function renderMixAdjusted(mix) {
 
   document.getElementById('mix-export-btn').onclick = exportMixCSV;
 
+  const uwNowEl = document.getElementById('mix-uw-now');
+  if (uwNowEl && mix.uw_now) {
+    const me = (mix.reps || []).find(r => r.is_me);
+    const mine = me && mix.uw_now.reps ? (mix.uw_now.reps[me.name] || 0) : 0;
+    uwNowEl.textContent = `In UW right now: ${mix.uw_now.total} team · ${mine} ${MIX_LBL.me}`;
+  }
+
   const uwToggle = document.getElementById('mix-uw-toggle');
   if (uwToggle) {
     uwToggle.onchange = (e) => {
