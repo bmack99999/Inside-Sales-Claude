@@ -30,7 +30,8 @@ A Flask web app deployed on **Railway** (`https://web-production-980e0.up.railwa
 - `dashboard/templates/kpis.html` — "KPIs" page: MTD charts, team leaderboard, activity log
 - `dashboard/templates/commissions.html` — "Commissions" page: pay-cycle audit, pending true-ups, cycle history, per-deal drill (MID-keyed)
 - `dashboard/templates/book_of_business.html` — "Book of Business" page: lifetime deal list + contacts, searchable
-- `scripts/parse_commission_sheets.py` — parses commission/Customers sheet text into payout+deal ingest rows (see Commissions Refresh Workflow)
+- `scripts/parse_commission_sheets.py` — parses commission sheet text into payout ingest rows (see Commissions Refresh Workflow)
+- `scripts/parse_customers_csv.py` — parses the Customers-sheet CSV export into deal ingest rows
 - `dashboard/static/style.css` — Navy/white theme
 - `dashboard/data/` — Local JSON backup files (also used by morning_briefing.py)
 
@@ -98,10 +99,10 @@ registry (from Bryce's "Customers" Google Sheet) joined to `CommissionPayout` li
 the extraction scripts — Claude is the bridge, same as the Gmail workflow.
 
 When Bryce says **"refresh commissions"** (or similar):
-1. Read via the Drive MCP:
-   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. Only the top deal grid (site, sign date, type, MID, volume, rate, contact); ignore the vendor/prospect/goals scratch below it.
-   - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`). Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
-2. Parse with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Build deal dicts from the Customers rows.
+1. Get the sheets:
+   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. NOTE: the Drive MCP truncates this sheet ~row 159, so ask Bryce to export it as CSV (File > Download > CSV) and parse that with `scripts/parse_customers_csv.py` → `parse_customers_csv(path)`. Only the top deal grid; the vendor/prospect/goals scratch below the deals has no MID so it's skipped automatically.
+   - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`), read via Drive MCP. Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
+2. Parse payouts with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Parse deals with `scripts/parse_customers_csv.py`.
 3. POST to Railway `/api/ingest` with `X-API-Key`:
    - `{"type": "payouts", "payouts": [...]}` — delete+replace all payout lines
    - `{"type": "deals", "deals": [...]}` — delete+replace the deal registry
