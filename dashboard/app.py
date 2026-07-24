@@ -49,7 +49,7 @@ from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
-                    Template)
+                    Template, Deal, CommissionPayout, normalize_mid)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -598,118 +598,193 @@ def _next_payday_for(paid_iso):
         candidate = _last_payday_of_month(nxt_month_start)
     return candidate
 
-def _compute_commission_kpis(items):
+def _parse_iso(s):
+    if not s:
+        return None
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+# Names used when a payout's MID isn't in the Customers deal registry
+_PAYOUT_TYPE_LABELS = {
+    'upfront': 'Upfront', 'true_up': 'True-Up', 'saas': 'SaaS',
+    'adjustment': 'Adjustment', 'upgrade': 'Upgrade',
+}
+
+
+def _commission_view(payouts, deals):
+    """Build the whole commission page payload from payout lines joined to deals.
+    payouts/deals are lists of dicts (to_dict output). MID is the join key."""
     today = date.today()
-    ytd_install = ytd_true = 0.0
-    mtd_install = mtd_true = 0.0
-    for it in items:
-        bonus_paid = it.get('install_bonus_paid_date')
-        true_paid  = it.get('true_up_paid_date')
-        bonus_amt  = float(it.get('install_bonus_amount') or 0)
-        true_amt   = float(it.get('true_up_amount') or 0)
-        if bonus_paid:
-            try:
-                bp = datetime.strptime(bonus_paid, '%Y-%m-%d').date()
-                if bp.year == today.year:
-                    ytd_install += bonus_amt
-                    if bp.month == today.month:
-                        mtd_install += bonus_amt
-            except (ValueError, TypeError):
-                pass
-        if true_paid:
-            try:
-                tp = datetime.strptime(true_paid, '%Y-%m-%d').date()
-                if tp.year == today.year:
-                    ytd_true += true_amt
-                    if tp.month == today.month:
-                        mtd_true += true_amt
-            except (ValueError, TypeError):
-                pass
+    deal_by_mid = {d['mid']: d for d in deals if d.get('mid')}
+
+    def deal_name(p):
+        d = deal_by_mid.get(p.get('mid'))
+        if d and d.get('site'):
+            return d['site']
+        return (p.get('dba_name') or '').title() or 'Unknown'
+
+    # ── Tiles: lifetime, YTD, and per-cycle totals ────────────────────────────
+    lifetime = 0.0
+    ytd = 0.0
+    by_cycle = {}   # pay_cycle → {'cycle','date_paid','lines':[],'total','by_type':{}}
+    for p in payouts:
+        amt = p.get('amount') or 0.0
+        lifetime += amt
+        pd = _parse_iso(p.get('date_paid'))
+        if pd and pd.year == today.year:
+            ytd += amt
+        cyc = p.get('pay_cycle') or (p.get('date_paid') or 'unknown')
+        b = by_cycle.setdefault(cyc, {
+            'cycle': cyc, 'date_paid': p.get('date_paid'),
+            'lines': [], 'total': 0.0,
+            'by_type': {'upfront': 0.0, 'true_up': 0.0, 'saas': 0.0,
+                        'adjustment': 0.0, 'upgrade': 0.0},
+        })
+        b['lines'].append({
+            'mid': p.get('mid'), 'account': deal_name(p),
+            'type': p.get('payout_type'),
+            'type_label': _PAYOUT_TYPE_LABELS.get(p.get('payout_type'), p.get('payout_type')),
+            'amount': round(amt, 2), 'date_paid': p.get('date_paid'),
+            'department': p.get('department'),
+        })
+        b['total'] += amt
+        if p.get('payout_type') in b['by_type']:
+            b['by_type'][p['payout_type']] += amt
+        if not b['date_paid'] and p.get('date_paid'):
+            b['date_paid'] = p['date_paid']
+
+    for b in by_cycle.values():
+        b['total'] = round(b['total'], 2)
+        b['by_type'] = {k: round(v, 2) for k, v in b['by_type'].items()}
+        b['lines'].sort(key=lambda x: (-abs(x['amount'])))
+
+    cycles = sorted(by_cycle.values(),
+                    key=lambda x: (x['date_paid'] or '', x['cycle']), reverse=True)
+    current_cycle = cycles[0] if cycles else None
+    history = cycles[1:] if len(cycles) > 1 else []
+
+    # ── Projected pipeline: deals boarded but not yet trued-up ────────────────
+    # A deal has a true-up ~2 months after boarding. If we've paid an upfront
+    # for its MID but no true_up line exists yet, the true-up is still coming.
+    paid_types_by_mid = {}
+    for p in payouts:
+        paid_types_by_mid.setdefault(p.get('mid'), set()).add(p.get('payout_type'))
+
+    pipeline = []
+    for mid, types in paid_types_by_mid.items():
+        if not mid:
+            continue
+        if 'upfront' in types and 'true_up' not in types:
+            d = deal_by_mid.get(mid)
+            pipeline.append({
+                'mid': mid,
+                'account': (d['site'] if d and d.get('site') else mid),
+                'sign_date': (d.get('sign_date') if d else None),
+            })
+    pipeline.sort(key=lambda x: (x['sign_date'] or ''), reverse=True)
+
+    kpis = {
+        'lifetime': round(lifetime, 2),
+        'ytd': round(ytd, 2),
+        'current_cycle_total': (current_cycle['total'] if current_cycle else 0.0),
+        'pipeline_count': len(pipeline),
+    }
     return {
-        'mtd_install': round(mtd_install, 2),
-        'mtd_true_up': round(mtd_true, 2),
-        'mtd_total':   round(mtd_install + mtd_true, 2),
-        'ytd_install': round(ytd_install, 2),
-        'ytd_true_up': round(ytd_true, 2),
-        'ytd_total':   round(ytd_install + ytd_true, 2),
+        'kpis': kpis,
+        'current_cycle': current_cycle,
+        'history': history,
+        'pipeline': pipeline,
     }
 
-def _compute_pay_periods(items):
-    """Bucket paid items by commission payday (last bi-weekly Friday of paid-date month).
-    Also produces a 'next payday' card with projected payouts."""
-    today = date.today()
-    buckets = {}   # iso payday → {'pay_date', 'install_payouts', 'true_up_payouts', 'total'}
-    def _bucket(d_iso):
-        return buckets.setdefault(d_iso, {
-            'pay_date': d_iso, 'install_payouts': [], 'true_up_payouts': [], 'total': 0.0
+
+def _deal_ledger(payouts, deals):
+    """Per-deal roll-up joined by MID: every deal with its total paid + payout
+    lines. Used for the per-deal drill and Book of Business. Includes deals with
+    no payouts yet, and payout MIDs with no matching deal (flagged)."""
+    deal_by_mid = {d['mid']: d for d in deals if d.get('mid')}
+    payouts_by_mid = {}
+    for p in payouts:
+        payouts_by_mid.setdefault(p.get('mid'), []).append(p)
+
+    ledger = []
+    all_mids = set(deal_by_mid) | set(payouts_by_mid)
+    for mid in all_mids:
+        d = deal_by_mid.get(mid)
+        ps = payouts_by_mid.get(mid, [])
+        total = round(sum(p.get('amount') or 0.0 for p in ps), 2)
+        lines = sorted(
+            ({'type': p.get('payout_type'),
+              'type_label': _PAYOUT_TYPE_LABELS.get(p.get('payout_type'), p.get('payout_type')),
+              'amount': round(p.get('amount') or 0.0, 2),
+              'date_paid': p.get('date_paid'),
+              'department': p.get('department')} for p in ps),
+            key=lambda x: (x['date_paid'] or ''))
+        ledger.append({
+            'mid': mid,
+            'in_registry': d is not None,
+            'site': (d.get('site') if d else ((ps[0].get('dba_name') or '').title() if ps else mid)),
+            'sign_date': (d.get('sign_date') if d else None),
+            'deal_type': (d.get('deal_type') if d else None),
+            'contact_name': (d.get('contact_name') if d else None),
+            'contact_email': (d.get('contact_email') if d else None),
+            'mo_volume': (d.get('mo_volume') if d else None),
+            'rate': (d.get('rate') if d else None),
+            'total_paid': total,
+            'payout_count': len(ps),
+            'lines': lines,
         })
-    for it in items:
-        bonus_paid = it.get('install_bonus_paid_date')
-        true_paid  = it.get('true_up_paid_date')
-        bonus_amt  = float(it.get('install_bonus_amount') or 0)
-        true_amt   = float(it.get('true_up_amount') or 0)
-        if bonus_paid and bonus_amt:
-            pd = _next_payday_for(bonus_paid)
-            if pd:
-                b = _bucket(pd.isoformat())
-                b['install_payouts'].append({'account': it['account_name'], 'amount': bonus_amt})
-                b['total'] += bonus_amt
-        if true_paid and true_amt:
-            pd = _next_payday_for(true_paid)
-            if pd:
-                b = _bucket(pd.isoformat())
-                b['true_up_payouts'].append({'account': it['account_name'], 'amount': true_amt})
-                b['total'] += true_amt
-    rolled = sorted(buckets.values(), key=lambda x: x['pay_date'], reverse=True)
-    # projected next payday = last bi-weekly Friday of current month (or next if past)
-    next_pay = _last_payday_of_month(today)
-    if next_pay < today:
-        nxt_month_start = (date(today.year + (1 if today.month == 12 else 0),
-                                1 if today.month == 12 else today.month + 1, 1))
-        next_pay = _last_payday_of_month(nxt_month_start)
-    projected = {'pay_date': next_pay.isoformat(),
-                 'install_payouts': [], 'true_up_payouts': [], 'total': 0.0}
-    for it in items:
-        # already-paid bonuses landing on this payday
-        bonus_paid = it.get('install_bonus_paid_date')
-        if bonus_paid:
-            pd = _next_payday_for(bonus_paid)
-            if pd and pd == next_pay:
-                continue   # already counted in rolled bucket; skip in projected
-        # if installed but bonus not yet paid, project it onto next_pay
-        if it.get('install_date') and not bonus_paid:
-            projected['install_payouts'].append({
-                'account': it['account_name'], 'amount': Commission.INSTALL_BONUS,
-            })
-            projected['total'] += Commission.INSTALL_BONUS
-        # if true_up_amount entered but not paid, project it
-        true_paid = it.get('true_up_paid_date')
-        true_amt  = float(it.get('true_up_amount') or 0)
-        if true_amt and not true_paid:
-            projected['true_up_payouts'].append({
-                'account': it['account_name'], 'amount': true_amt,
-            })
-            projected['total'] += true_amt
-    projected['total'] = round(projected['total'], 2)
-    return {'history': rolled, 'projected': projected}
+    ledger.sort(key=lambda x: (x['sign_date'] or '', x['site'] or ''), reverse=True)
+    return ledger
 
 
 @app.route('/commissions')
 def commissions():
-    rows  = Commission.query.order_by(Commission.close_date.desc()).all()
-    items = [r.to_dict() for r in rows]
-    kpis  = _compute_commission_kpis(items)
-    periods = _compute_pay_periods(items)
-    refreshed_at = max([i.get('extracted_at') or '' for i in items], default='')
+    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
+    deals   = [d.to_dict() for d in Deal.query.all()]
+    view    = _commission_view(payouts, deals)
+    ledger  = _deal_ledger(payouts, deals)
+    refreshed_at = max(
+        [p.get('extracted_at') or '' for p in payouts] +
+        [d.get('extracted_at') or '' for d in deals], default='')
     return render_template('commissions.html',
-                           items=items, kpis=kpis, periods=periods,
+                           view=view, ledger=ledger,
+                           refreshed_at=refreshed_at)
+
+
+@app.route('/book-of-business')
+def book_of_business():
+    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
+    deals   = [d.to_dict() for d in Deal.query.all()]
+    ledger  = _deal_ledger(payouts, deals)
+    # Summary stats for the top of the page
+    total_deals = len([l for l in ledger if l['in_registry']])
+    by_year, by_type = {}, {}
+    for l in ledger:
+        if not l['in_registry']:
+            continue
+        yr = (l['sign_date'] or '')[:4] or 'Unknown'
+        by_year[yr] = by_year.get(yr, 0) + 1
+        t = l['deal_type'] or 'Other'
+        by_type[t] = by_type.get(t, 0) + 1
+    refreshed_at = max([d.get('extracted_at') or '' for d in deals], default='')
+    return render_template('book_of_business.html',
+                           ledger=ledger, total_deals=total_deals,
+                           by_year=dict(sorted(by_year.items(), reverse=True)),
+                           by_type=dict(sorted(by_type.items(), key=lambda x: -x[1])),
                            refreshed_at=refreshed_at)
 
 
 @app.route('/api/commissions_data')
 def commissions_data():
-    items = [r.to_dict() for r in Commission.query.all()]
-    return jsonify({'commissions': items})
+    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
+    deals   = [d.to_dict() for d in Deal.query.all()]
+    return jsonify({'payouts': payouts, 'deals': deals,
+                    'ledger': _deal_ledger(payouts, deals)})
 
 
 @app.route('/api/callbacks_data')
@@ -1320,6 +1395,69 @@ def api_ingest():
                 ))
         db.session.commit()
         return jsonify({'ok': True, 'count': len(items)})
+
+    elif ingest_type == 'deals':
+        # Deal registry from the Customers sheet — delete+replace, keyed on normalized MID.
+        Deal.query.delete(synchronize_session=False)
+        db.session.flush()
+        seen = set()
+        for item in data.get('deals', []):
+            mid = normalize_mid(item.get('mid') or item.get('mid_raw'))
+            if not mid or mid in seen:
+                continue   # skip blank/duplicate MIDs (dup would violate PK)
+            seen.add(mid)
+            vol = item.get('mo_volume')
+            try:
+                vol = float(vol) if vol not in (None, '') else None
+            except (ValueError, TypeError):
+                vol = None
+            db.session.add(Deal(
+                mid           = mid,
+                mid_raw       = item.get('mid_raw') or item.get('mid'),
+                site          = item.get('site'),
+                sign_date     = item.get('sign_date'),
+                deal_type     = item.get('deal_type'),
+                mo_volume     = vol,
+                rate          = item.get('rate'),
+                contact_name  = item.get('contact_name'),
+                contact_email = item.get('contact_email'),
+                notes         = item.get('notes'),
+                source_flag   = item.get('source_flag'),
+                extracted_at  = item.get('extracted_at'),
+            ))
+        db.session.commit()
+        return jsonify({'ok': True, 'deals': len(seen)})
+
+    elif ingest_type == 'payouts':
+        # Commission payout lines — delete+replace, keyed on deterministic row id.
+        CommissionPayout.query.delete(synchronize_session=False)
+        db.session.flush()
+        seen = set()
+        for item in data.get('payouts', []):
+            pid = item.get('id')
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            amt = item.get('amount')
+            try:
+                amt = float(amt) if amt not in (None, '') else 0.0
+            except (ValueError, TypeError):
+                amt = 0.0
+            db.session.add(CommissionPayout(
+                id           = pid,
+                mid          = normalize_mid(item.get('mid') or item.get('mid_raw')),
+                mid_raw      = item.get('mid_raw') or item.get('mid'),
+                dba_name     = item.get('dba_name'),
+                department   = item.get('department'),
+                payout_type  = item.get('payout_type'),
+                amount       = amt,
+                date_paid    = item.get('date_paid'),
+                pay_cycle    = item.get('pay_cycle'),
+                source_sheet = item.get('source_sheet'),
+                extracted_at = item.get('extracted_at'),
+            ))
+        db.session.commit()
+        return jsonify({'ok': True, 'payouts': len(seen)})
 
     return jsonify({'error': 'Unknown ingest type'}), 400
 

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Book of Business — SkyTab Inside Sales{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="header-left">
+    <h1 class="page-title">Book of Business</h1>
+    <div class="header-meta">
+      {% if refreshed_at %}Last sync: {{ refreshed_at }} · {% endif %}{{ total_deals }} signed deals
+    </div>
+  </div>
+</div>
+
+<!-- Summary tiles -->
+<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
+  <div class="log-table-card" style="flex:1;min-width:220px;padding:14px 18px;">
+    <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Deals by Year</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      {% for yr, n in by_year.items() %}
+      <div><span style="font-size:20px;font-weight:700;color:var(--navy)">{{ n }}</span> <span style="color:#888">{{ yr }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="log-table-card" style="flex:1;min-width:220px;padding:14px 18px;">
+    <div style="font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Deals by Type</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      {% for t, n in by_type.items() %}
+      <div><span style="font-size:20px;font-weight:700;color:var(--navy)">{{ n }}</span> <span style="color:#888">{{ t }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Filter -->
+<div style="display:flex;gap:10px;align-items:center;">
+  <input type="text" id="bob-search" placeholder="Search restaurant, MID, contact, email..."
+         style="flex:1;padding:8px 12px;border:1px solid #ccc;border-radius:6px;">
+  <label style="font-size:13px;color:#555;display:flex;align-items:center;gap:5px;">
+    <input type="checkbox" id="paid-only"> Paid only
+  </label>
+</div>
+
+<div class="log-table-card" style="margin-top:12px;">
+  <table class="ml-table" id="bob-table">
+    <thead><tr>
+      <th>Restaurant</th><th>Signed</th><th>Type</th><th>MID</th>
+      <th>Contact</th><th>Volume</th><th style="text-align:right">Total Paid</th>
+    </tr></thead>
+    <tbody>
+      {% for l in ledger %}
+      {% if l.in_registry %}
+      <tr class="bob-row" data-paid="{{ 1 if l.total_paid else 0 }}"
+          data-search="{{ (l.site or '')|lower }} {{ l.mid }} {{ (l.contact_name or '')|lower }} {{ (l.contact_email or '')|lower }}">
+        <td><strong>{{ l.site }}</strong></td>
+        <td>{{ l.sign_date or '—' }}</td>
+        <td>{{ l.deal_type or '—' }}</td>
+        <td class="mono">{{ l.mid }}</td>
+        <td>
+          {% if l.contact_name %}{{ l.contact_name }}{% endif %}
+          {% if l.contact_email %}<div style="font-size:11px;color:#888">{{ l.contact_email }}</div>{% endif %}
+          {% if not l.contact_name and not l.contact_email %}—{% endif %}
+        </td>
+        <td>{% if l.mo_volume %}${{ '{:,.0f}'.format(l.mo_volume) }}{% else %}—{% endif %}</td>
+        <td style="text-align:right;font-weight:700;{% if l.total_paid < 0 %}color:#c0392b{% endif %}">
+          {% if l.total_paid %}{% if l.total_paid < 0 %}-${{ '{:,.0f}'.format(-l.total_paid) }}{% else %}${{ '{:,.0f}'.format(l.total_paid) }}{% endif %}{% else %}<span style="color:#bbb">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:#555; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const search = document.getElementById('bob-search');
+  const paidOnly = document.getElementById('paid-only');
+  function apply() {
+    const q = search.value.toLowerCase().trim();
+    const p = paidOnly.checked;
+    document.querySelectorAll('#bob-table tbody tr.bob-row').forEach(tr => {
+      const matchQ = !q || (tr.dataset.search || '').includes(q);
+      const matchP = !p || tr.dataset.paid === '1';
+      tr.style.display = (matchQ && matchP) ? '' : 'none';
+    });
+  }
+  search.addEventListener('input', apply);
+  paidOnly.addEventListener('change', apply);
+})();
+</script>
+{% endblock %}

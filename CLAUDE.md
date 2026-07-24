@@ -28,6 +28,9 @@ A Flask web app deployed on **Railway** (`https://web-production-980e0.up.railwa
 - `dashboard/templates/my_leads.html` — "My Leads" page: full lead and opp tables with sorting
 - `dashboard/templates/recycled.html` — "Recycled" page: 1,500+ recycled leads with search/filter
 - `dashboard/templates/kpis.html` — "KPIs" page: MTD charts, team leaderboard, activity log
+- `dashboard/templates/commissions.html` — "Commissions" page: pay-cycle audit, pending true-ups, cycle history, per-deal drill (MID-keyed)
+- `dashboard/templates/book_of_business.html` — "Book of Business" page: lifetime deal list + contacts, searchable
+- `scripts/parse_commission_sheets.py` — parses commission/Customers sheet text into payout+deal ingest rows (see Commissions Refresh Workflow)
 - `dashboard/static/style.css` — Navy/white theme
 - `dashboard/data/` — Local JSON backup files (also used by morning_briefing.py)
 
@@ -87,6 +90,24 @@ When Bryce says **"generate my email drafts"** (or similar):
 
 Templates support `{first_name}`, `{full_name}`, `{company}` tokens (resolved server-side).
 Opportunities are excluded (no email field on the Opp model — only leads & recycled leads).
+
+## Commissions Refresh Workflow
+The Commissions + Book of Business pages are built on a **MID-keyed model**: a `Deal`
+registry (from Bryce's "Customers" Google Sheet) joined to `CommissionPayout` lines
+(from the commission sheets) on normalized MID. There is **no Google Drive auth** in
+the extraction scripts — Claude is the bridge, same as the Gmail workflow.
+
+When Bryce says **"refresh commissions"** (or similar):
+1. Read via the Drive MCP:
+   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. Only the top deal grid (site, sign date, type, MID, volume, rate, contact); ignore the vendor/prospect/goals scratch below it.
+   - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`). Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
+2. Parse with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Build deal dicts from the Customers rows.
+3. POST to Railway `/api/ingest` with `X-API-Key`:
+   - `{"type": "payouts", "payouts": [...]}` — delete+replace all payout lines
+   - `{"type": "deals", "deals": [...]}` — delete+replace the deal registry
+4. Report: payout/deal counts, and any deals with no matching payout (audit candidates) or payout MIDs not in the registry.
+
+Payout types: `upfront` ($250 DM / $400 old SkyForce / $200 Shift4 One), `true_up` (can be a negative clawback), `saas` (SkyTab MIDs only), `adjustment`, `upgrade`. MID normalize = strip leading zeros (`models.normalize_mid`) — the Customers sheet zero-pads to 10, the commission sheets don't. Ingest is delete+replace (the sheets are the source of truth; nothing is hand-entered on these pages).
 
 ## Salesforce Safety Rules — NON-NEGOTIABLE
 **NEVER perform any of the following, even if it seems helpful:**
