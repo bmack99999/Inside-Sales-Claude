@@ -402,6 +402,65 @@ class Commission(db.Model):
         return d
 
 
+def normalize_mid(raw):
+    """Commission sheets use un-padded MIDs (21801894); the Customers sheet
+    zero-pads to 10 (0021801894). Strip non-digits and leading zeros so both
+    sides join on the same key. Returns '' for junk/empty."""
+    if raw is None:
+        return ''
+    digits = ''.join(ch for ch in str(raw) if ch.isdigit())
+    return digits.lstrip('0')
+
+
+class Deal(db.Model):
+    """A signed deal from Bryce's master Customers sheet. Keyed on normalized MID.
+    This is the deal registry; commission payouts join to it by mid."""
+    __tablename__ = 'deals'
+
+    mid          = db.Column(db.Text, primary_key=True)   # normalized (no leading zeros)
+    mid_raw      = db.Column(db.Text)                      # as typed in the sheet
+    site         = db.Column(db.Text)
+    sign_date    = db.Column(db.Text)                      # ISO if parseable, else raw
+    deal_type    = db.Column(db.Text)                      # SkyTab / S4 Conversion / Ownership / etc.
+    mo_volume    = db.Column(db.Numeric)                   # monthly processing volume, if recorded
+    rate         = db.Column(db.Text)                      # freeform rate string
+    contact_name = db.Column(db.Text)
+    contact_email = db.Column(db.Text)
+    notes        = db.Column(db.Text)
+    source_flag  = db.Column(db.Text)                      # lead / organic / existing / conversion
+    extracted_at = db.Column(db.Text)
+
+    def to_dict(self):
+        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        d['mo_volume'] = float(d['mo_volume']) if d['mo_volume'] is not None else None
+        return d
+
+
+class CommissionPayout(db.Model):
+    """One payout line from a commission sheet (SkyForce History or Digital
+    Marketing). Every upfront / true-up / SaaS / adjustment row becomes one
+    record. Joined to Deal by mid. Delete-and-replace on ingest — the sheets
+    are the source of truth, nothing is hand-entered here."""
+    __tablename__ = 'commission_payouts'
+
+    id            = db.Column(db.Text, primary_key=True)   # deterministic hash of the row
+    mid           = db.Column(db.Text, index=True)         # normalized
+    mid_raw       = db.Column(db.Text)
+    dba_name      = db.Column(db.Text)                     # DBA as it appears in the sheet
+    department    = db.Column(db.Text)                     # SkyForce / HGC / Digital Marketing
+    payout_type   = db.Column(db.Text)                     # upfront | true_up | saas | adjustment | upgrade
+    amount        = db.Column(db.Numeric, default=0)       # signed: negative = clawback/retract
+    date_paid     = db.Column(db.Text)                     # ISO
+    pay_cycle     = db.Column(db.Text)                     # e.g. 20260702
+    source_sheet  = db.Column(db.Text)                     # which file it came from
+    extracted_at  = db.Column(db.Text)
+
+    def to_dict(self):
+        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        d['amount'] = float(d['amount']) if d['amount'] is not None else 0.0
+        return d
+
+
 class LeadEmailQueue(db.Model):
     """Tracks which leads/opps are queued for email drafting, and which template."""
     __tablename__ = 'lead_email_queue'

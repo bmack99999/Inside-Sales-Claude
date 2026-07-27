@@ -31,6 +31,9 @@
       <a href="{{ url_for('commissions') }}" class="nav-link {% if request.endpoint == 'commissions' %}active{% endif %}">
         Commissions
       </a>
+      <a href="{{ url_for('book_of_business') }}" class="nav-link {% if request.endpoint == 'book_of_business' %}active{% endif %}">
+        Book of Business
+      </a>
       <a href="{{ url_for('templates_page') }}" class="nav-link {% if request.endpoint == 'templates_page' %}active{% endif %}">
         Templates
       </a>
