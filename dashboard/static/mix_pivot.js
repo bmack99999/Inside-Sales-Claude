@@ -80,6 +80,7 @@ function _repDetailHTML(name) {
     <td style="padding:3px 8px">${_pctCell(r.le ? (r.c / r.le * 100).toFixed(1) : 0, r.le)}</td>
     <td style="padding:3px 8px"><strong>${r.w}</strong></td>
     <td style="padding:3px 8px">${_pctCell(r.le ? (r.w / r.le * 100).toFixed(1) : 0, r.le)}</td>
+    <td style="padding:3px 8px;color:#6b7280">${rates[r.s] != null ? (rates[r.s] * 100).toFixed(1) + '%' : '—'}</td>
     <td style="padding:3px 8px;color:#6b7280">${r.exp.toFixed(1)}</td>
     <td style="padding:3px 8px;color:${r.w >= r.exp ? '#059669' : '#dc2626'}">${r.exp > 0 ? ((r.w / r.exp - 1) * 100).toFixed(0) + '%' : '—'}</td>
   </tr>`).join('');
@@ -89,6 +90,7 @@ function _repDetailHTML(name) {
         <th style="text-align:left;padding:3px 8px">Source</th><th style="padding:3px 8px">Leads</th>
         <th style="padding:3px 8px">Conv</th><th style="padding:3px 8px">Conv%</th>
         <th style="padding:3px 8px">Won</th><th style="padding:3px 8px">Close%</th>
+        <th style="padding:3px 8px" title="Team close rate for this source under the current toggles — Leads x Team% = Exp">Team%</th>
         <th style="padding:3px 8px">Exp</th><th style="padding:3px 8px">Vs Exp</th>
       </tr></thead>
       <tbody style="text-align:right">${inner}</tbody>
