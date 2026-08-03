@@ -242,18 +242,18 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     ):
         inval[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
 
-    # Deals currently in Underwriting Review are a point-in-time state, not
-    # a dated event — they count in windows that include TODAY (the running
-    # cumulative view and the current month), never in historical months.
-    # Once a deal closes it migrates to its close month automatically.
-    window_is_current = end is None or end > date.today().isoformat()
-    if window_is_current:
-        for r in sf_query(
-            f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
-            f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Underwriting Review' "
-            f"GROUP BY OwnerId, LeadSource"
-        ):
-            uw[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+    # Deals currently in Underwriting Review count in the window their opp
+    # was created. Stacking every pending UW deal against a single month's
+    # leads inflated close/expected rates past 100%. Once a deal closes it
+    # migrates to its close month automatically.
+    uw_end = f" AND CreatedDate < {end}T00:00:00Z" if end else ""
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Underwriting Review' "
+        f"AND CreatedDate >= {start}T00:00:00Z{uw_end} "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        uw[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
 
     src_leads = defaultdict(int)
     src_conv  = defaultdict(int)
