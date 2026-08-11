@@ -17,6 +17,11 @@
       <span class="settings-nav-icon">✉️</span>
       Email Templates
     </a>
+    <a href="{{ url_for('settings', section='team_view_access') }}"
+       class="settings-nav-item {% if section == 'team_view_access' %}active{% endif %}">
+      <span class="settings-nav-icon">👀</span>
+      Team View Access
+    </a>
   </nav>
 
   <!-- Right panel -->
@@ -63,11 +68,58 @@
     </div>
     {% endif %}
 
+    {% if section == 'team_view_access' %}
+    <div class="settings-section">
+      <h2 class="settings-section-title">Team View Access</h2>
+      <p class="settings-section-desc">
+        Every time someone opens the shared <code>/team-view</code> link, it's logged here
+        (most recent first, last 200 visits). {{ page_views|length }} visit{{ '' if page_views|length == 1 else 's' }} logged.
+      </p>
+
+      {% if page_views %}
+      <table class="tv-log-table">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>IP</th>
+            <th>Device / Browser</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in page_views %}
+          <tr>
+            <td class="tv-log-when" data-ts="{{ v.viewed_at }}">{{ v.viewed_at }}</td>
+            <td>{{ v.ip }}</td>
+            <td class="tv-log-ua">{{ v.user_agent }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="settings-section-desc">No visits logged yet.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
   </div><!-- /settings-panel -->
 </div><!-- /settings-layout -->
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Convert UTC ISO timestamps in the access log to local time
+document.querySelectorAll('.tv-log-when').forEach(td => {
+  const iso = td.dataset.ts;
+  if (!iso) return;
+  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+  if (!isNaN(d)) {
+    td.textContent = d.toLocaleString([], {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  }
+});
+</script>
 <script>
 function saveTemplate(slot) {
   const name    = document.getElementById('et-name-'    + slot).value.trim();

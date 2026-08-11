@@ -49,7 +49,7 @@ from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
-                    Template, Deal, CommissionPayout, normalize_mid)
+                    Template, Deal, CommissionPayout, PageView, normalize_mid)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -888,7 +888,27 @@ TEAM_VIEW_KEY = os.environ.get('TEAM_VIEW_KEY', 'tv_EkqBFEGI6Af25jk-QzpJvJCouFxY
 def team_view():
     if request.args.get('key') != TEAM_VIEW_KEY:
         return 'Not found', 404
+    try:
+        # Railway sits behind a proxy — real client IP is in X-Forwarded-For
+        ip = (request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+              or request.remote_addr)
+        db.session.add(PageView(
+            page='team-view',
+            viewed_at=datetime.utcnow().isoformat(),
+            ip=ip,
+            user_agent=(request.headers.get('User-Agent') or '')[:500],
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
     return render_template('team_view.html')
+
+
+@app.route('/api/page_views')
+def api_page_views():
+    views = (PageView.query.filter_by(page='team-view')
+             .order_by(PageView.id.desc()).limit(200).all())
+    return jsonify([v.to_dict() for v in views])
 
 
 @app.route('/')
@@ -1645,9 +1665,15 @@ def clear_lead_colors():
 def settings(section='email_templates'):
     templates = {t.slot: t.to_dict()
                  for t in EmailTemplate.query.order_by(EmailTemplate.slot).all()}
+    page_views = []
+    if section == 'team_view_access':
+        page_views = [v.to_dict() for v in
+                      PageView.query.filter_by(page='team-view')
+                      .order_by(PageView.id.desc()).limit(200).all()]
     return render_template('settings.html',
         section=section,
         templates=templates,
+        page_views=page_views,
     )
 
 

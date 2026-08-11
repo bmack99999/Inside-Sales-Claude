@@ -471,3 +471,17 @@ class LeadEmailQueue(db.Model):
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
+class PageView(db.Model):
+    """Access log for shared pages (currently just /team-view)."""
+    __tablename__ = 'page_views'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    page       = db.Column(db.Text, index=True)
+    viewed_at  = db.Column(db.Text)     # ISO timestamp (UTC)
+    ip         = db.Column(db.Text)
+    user_agent = db.Column(db.Text)
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

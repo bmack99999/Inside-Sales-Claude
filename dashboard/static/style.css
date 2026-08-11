@@ -1568,6 +1568,33 @@ body {
   color: var(--navy);
 }
 
+/* Team view access log */
+.tv-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tv-log-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-bottom: 2px solid var(--border);
+  color: var(--navy);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tv-log-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.tv-log-when { white-space: nowrap; font-weight: 600; color: var(--navy); }
+.tv-log-ua {
+  color: var(--text-light);
+  font-size: 12px;
+  word-break: break-word;
+}
+
 /* Email template cards */
 .et-templates { display: flex; flex-direction: column; gap: 20px; }
 .et-card {
