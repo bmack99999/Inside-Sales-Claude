@@ -198,12 +198,14 @@ class OppTarget(db.Model):
     the recycled extraction simply stop rendering."""
     __tablename__ = 'opp_targets'
 
-    sf_id    = db.Column(db.Text, primary_key=True)
-    segment  = db.Column(db.Text)  # never_connected | stale_conversation | one_way_only
-    added_at = db.Column(db.Text)
+    sf_id       = db.Column(db.Text, primary_key=True)
+    segment     = db.Column(db.Text)  # never_connected | stale_conversation | one_way_only | review_no_touch
+    added_at    = db.Column(db.Text)
+    opp_created = db.Column(db.Text)  # CreatedDate of the converted opp (drives the Age column)
 
     def to_dict(self):
-        return {'sf_id': self.sf_id, 'segment': self.segment, 'added_at': self.added_at}
+        return {'sf_id': self.sf_id, 'segment': self.segment,
+                'added_at': self.added_at, 'opp_created': self.opp_created}
 
 
 class LeadColor(db.Model):

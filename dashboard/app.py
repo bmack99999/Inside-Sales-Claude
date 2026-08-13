@@ -85,6 +85,7 @@ with app.app_context():
         ("sf_task_data",   "daily_count",  "INTEGER DEFAULT 0"),
         ("team_metrics",   "monthly_snapshots", "TEXT"),
         ("team_metrics",   "mix_adjusted",      "TEXT"),
+        ("opp_targets",    "opp_created",       "TEXT"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
@@ -1240,7 +1241,7 @@ def opp_targets():
     with no TWO-WAY contact in 30+ days (one-way calls/emails don't count) and
     no active no-touch flag. Colors + per-lead notes persist via
     LeadColor / LeadNote."""
-    targets = {t.sf_id: t.segment for t in OppTarget.query.all()}
+    targets = {t.sf_id: t for t in OppTarget.query.all()}
 
     q = (RecycledLead.query
          .filter(RecycledLead.id.in_(targets.keys()))) if targets else None
@@ -1251,7 +1252,10 @@ def opp_targets():
     leads = []
     for r in (q.all() if q is not None else []):
         d = r.to_dict()
-        d['segment'] = targets.get(r.id)
+        t = targets.get(r.id)
+        d['segment'] = t.segment if t else None
+        opp_age = days_since((t.opp_created or '')[:10]) if t else 9999
+        d['opp_age_days'] = None if opp_age == 9999 else opp_age
         d['days_since_contact'] = days_since(d.get('last_contact_date'))
         if d['days_since_contact'] == 9999:
             d['days_since_contact'] = None
@@ -1344,9 +1348,10 @@ def api_ingest():
         db.session.flush()
         for t in targets:
             db.session.add(OppTarget(
-                sf_id    = t['sf_id'],
-                segment  = t.get('segment'),
-                added_at = t.get('added_at'),
+                sf_id       = t['sf_id'],
+                segment     = t.get('segment'),
+                added_at    = t.get('added_at'),
+                opp_created = t.get('opp_created'),
             ))
         db.session.commit()
         return jsonify({'ok': True, 'targets': len(targets)})

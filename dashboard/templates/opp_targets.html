@@ -33,6 +33,7 @@
         <th>Email</th>
         <th class="th-tz">TZ</th>
         <th>Days since contact</th>
+        <th>Opp age</th>
         <th>Emailed</th>
         <th>Attempts</th>
         <th>Owner</th>
@@ -73,6 +74,7 @@
         </td>
         <td>{% if l.timezone %}<span class="tz-badge tz-{{ l.timezone }}">{{ l.timezone }}</span>{% else %}—{% endif %}</td>
         <td>{% if l.days_since_contact is not none %}{{ l.days_since_contact }}d{% else %}—{% endif %}</td>
+        <td>{% if l.opp_age_days is not none %}{% if l.opp_age_days >= 60 %}{{ (l.opp_age_days / 30.44) | round | int }}mo{% else %}{{ l.opp_age_days }}d{% endif %}{% else %}—{% endif %}</td>
         <td class="ot-emailed-cell">
           {% if l.emailed_display %}
             <span class="ot-emailed">✓ {{ l.emailed_display }}</span>{% if l.my_email_count and l.my_email_count > 1 %}<span class="ot-email-badge">x{{ l.my_email_count }}</span>{% endif %}
