@@ -190,6 +190,22 @@ class OppDraftQueue(db.Model):
         return {'sf_id': self.sf_id, 'queued_at': self.queued_at}
 
 
+class OppTarget(db.Model):
+    """Current reconnect-campaign target list for the Opp Targets page.
+    Computed offline (Claude analyzes the recycled pool per-activity for
+    two-way contact) and pushed via ingest type 'opp_targets' (delete+replace).
+    The page joins RecycledLead by sf_id, so targets whose lead drops out of
+    the recycled extraction simply stop rendering."""
+    __tablename__ = 'opp_targets'
+
+    sf_id    = db.Column(db.Text, primary_key=True)
+    segment  = db.Column(db.Text)  # never_connected | stale_conversation | one_way_only
+    added_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {'sf_id': self.sf_id, 'segment': self.segment, 'added_at': self.added_at}
+
+
 class LeadColor(db.Model):
     """Persists user-assigned colors across re-scans, keyed by Salesforce ID."""
     __tablename__ = 'lead_colors'

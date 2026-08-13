@@ -7,8 +7,8 @@
   <div class="header-left">
     <h1 class="page-title">Opp Targets</h1>
     <div class="header-meta">
-      Campaign reply tracker &nbsp;·&nbsp; {{ count }} workable converted opps
-      &nbsp;·&nbsp; excludes your own opps, "do not call", and anything contacted in the last 10 days (leads you emailed stay)
+      Reconnect campaign &nbsp;·&nbsp; {{ count }} stale converted opps
+      &nbsp;·&nbsp; no two way contact in 30+ days (one way calls/emails don't count) &nbsp;·&nbsp; excludes your own opps and active no touch flags
     </div>
   </div>
   <div class="header-right" style="display:flex;align-items:center;gap:10px;">
@@ -57,8 +57,13 @@
         <td>{{ loop.index }}</td>
         <td class="recycled-name">
           <a href="{{ l.opp_url }}" target="_blank" class="recycled-name-link">{{ l.company or '—' }}</a>
-          {% if l.no_touch %}<span class="ot-notouch-badge" title="Flagged no-touch (do not call / demo set, etc.) — showing because you emailed them">no touch</span>{% endif %}
-          <div class="ot-contact-sub">{{ l.name or '' }}</div>
+          {% if l.no_touch %}<span class="ot-notouch-badge" title="Notes contain a no-touch phrase (do not call / demo set, etc.) — check the attempt notes before emailing">no touch</span>{% endif %}
+          <div class="ot-contact-sub">{{ l.name or '' }}
+            {% if l.segment == 'never_connected' %}<span class="ot-seg-badge ot-seg-never">never connected</span>
+            {% elif l.segment == 'stale_conversation' %}<span class="ot-seg-badge ot-seg-stale">stale convo</span>
+            {% elif l.segment == 'one_way_only' %}<span class="ot-seg-badge ot-seg-oneway">one way only</span>
+            {% elif l.segment == 'review_no_touch' %}<span class="ot-seg-badge ot-seg-review">review: old no touch</span>{% endif %}
+          </div>
         </td>
         <td>
           {% if l.phone %}<a href="tel:{{ l.phone }}" class="card-phone">{{ l.phone }}</a>{% else %}—{% endif %}
@@ -91,7 +96,7 @@
 <div class="empty-state">
   <div class="empty-icon">&#9851;</div>
   <h2>No opp targets loaded</h2>
-  <p>Run the recycled extraction to populate converted-to-opp leads.</p>
+  <p>Ask Claude to refresh the reconnect target list to populate this page.</p>
 </div>
 {% endif %}
 
@@ -115,6 +120,14 @@
 <style>
   .ot-notes-th, .ot-notes-cell { width: 280px; }
   .ot-contact-sub { font-size: 12px; color: #8a97ad; margin-top: 2px; }
+  .ot-seg-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px;
+    border-radius: 9px; font-size: 10px; font-weight: 600; vertical-align: middle;
+  }
+  .ot-seg-never  { background: #fdeaea; color: #b03a3a; }
+  .ot-seg-stale  { background: #fdf3e0; color: #a06a12; }
+  .ot-seg-oneway { background: #e8eefc; color: #3556a8; }
+  .ot-seg-review { background: #f3e8fc; color: #7a35a8; }
   .ot-note {
     width: 100%; min-height: 30px; resize: vertical; box-sizing: border-box;
     border: 1px solid #d9e0ea; border-radius: 6px; padding: 6px 8px;

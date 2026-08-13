@@ -49,7 +49,8 @@ from models import (db, Lead, Opportunity, Callback, KpiLog,
                     RecycledLead, RefreshLog, SkippedToday, LeadColor, LeadNote,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
-                    Template, Deal, CommissionPayout, PageView, normalize_mid)
+                    Template, Deal, CommissionPayout, PageView, OppTarget,
+                    normalize_mid)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -1233,34 +1234,24 @@ MY_OPP_OWNER_EMAIL = 'bryce.mack@shift4.com'
 
 @app.route('/opp_targets')
 def opp_targets():
-    """Campaign reply tracker: workable converted-to-opp recycled leads.
-    Cohort = converted + has opp + not owned by Bryce + not no_touch +
-    not contacted in the last 10 days (team no-poach window) — EXCEPT leads
-    Bryce has already emailed, which always stay visible so he can track replies
-    even though logging his email made them 'recently contacted'.
-    Colors + per-lead notes persist via LeadColor / LeadNote."""
-    cutoff = (date.today() - timedelta(days=10)).isoformat()  # contacted on/after this = too recent
+    """Campaign reply tracker for the current reconnect campaign.
+    The cohort is the ingested OppTarget list (type 'opp_targets'), computed
+    offline from the recycled pool: converted-to-opp leads not owned by Bryce,
+    with no TWO-WAY contact in 30+ days (one-way calls/emails don't count) and
+    no active no-touch flag. Colors + per-lead notes persist via
+    LeadColor / LeadNote."""
+    targets = {t.sf_id: t.segment for t in OppTarget.query.all()}
 
-    emailed_by_me = RecycledLead.my_email_count > 0
-    # Fresh target: not flagged no_touch AND last real contact >10 days ago (or never)
-    fresh_target = db.and_(
-        db.or_(RecycledLead.no_touch == False, RecycledLead.no_touch == None),
-        db.or_(RecycledLead.last_contact_date == None,
-               RecycledLead.last_contact_date < cutoff),
-    )
     q = (RecycledLead.query
-         .filter(RecycledLead.is_converted == True,
-                 RecycledLead.converted_opp_id != None,
-                 db.or_(RecycledLead.opp_owner_email == None,
-                        db.func.lower(RecycledLead.opp_owner_email) != MY_OPP_OWNER_EMAIL),
-                 db.or_(emailed_by_me, fresh_target)))
+         .filter(RecycledLead.id.in_(targets.keys()))) if targets else None
 
     notes = {n.sf_id: n.content for n in LeadNote.query.all()}
     draft_queue = {q.sf_id for q in OppDraftQueue.query.all()}
 
     leads = []
-    for r in q.all():
+    for r in (q.all() if q is not None else []):
         d = r.to_dict()
+        d['segment'] = targets.get(r.id)
         d['days_since_contact'] = days_since(d.get('last_contact_date'))
         if d['days_since_contact'] == 9999:
             d['days_since_contact'] = None
@@ -1345,6 +1336,20 @@ def api_ingest():
         ))
         db.session.commit()
         return jsonify({'ok': True, 'leads': len(data.get('leads', []))})
+
+    elif ingest_type == 'opp_targets':
+        # Delete+replace the reconnect-campaign target list (Opp Targets page).
+        targets = data.get('targets', [])
+        OppTarget.query.delete(synchronize_session=False)
+        db.session.flush()
+        for t in targets:
+            db.session.add(OppTarget(
+                sf_id    = t['sf_id'],
+                segment  = t.get('segment'),
+                added_at = t.get('added_at'),
+            ))
+        db.session.commit()
+        return jsonify({'ok': True, 'targets': len(targets)})
 
     elif ingest_type == 'metrics':
         m = data.get('metrics', {})
