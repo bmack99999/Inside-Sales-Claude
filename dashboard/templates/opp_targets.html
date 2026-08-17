@@ -28,7 +28,7 @@
         <th class="ot-draft-th">Draft</th>
         <th class="color-th"></th>
         <th>#</th>
-        <th>Company / Contact</th>
+        <th class="ot-company-th">Company / Contact</th>
         <th>Phone</th>
         <th>Email</th>
         <th class="th-tz">TZ</th>
@@ -121,7 +121,8 @@
 
 <style>
   .ot-notes-th, .ot-notes-cell { width: 280px; }
-  .ml-table .recycled-name { min-width: 300px; }
+  /* Table uses table-layout: fixed, so column width must be set on the th */
+  .ml-table .ot-company-th { width: 300px; }
   .ot-contact-sub { font-size: 12px; color: #8a97ad; margin-top: 2px; }
   .ot-seg-badge {
     display: inline-block; margin-left: 6px; padding: 1px 7px;
