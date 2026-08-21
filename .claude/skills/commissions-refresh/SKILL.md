@@ -13,7 +13,7 @@ the extraction scripts — Claude is the bridge, same as the Gmail workflow.
 ## Steps
 
 1. Get the sheets:
-   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. NOTE: the Drive MCP truncates this sheet ~row 159, so ask Bryce to export it as CSV (File > Download > CSV) and parse that with `scripts/parse_customers_csv.py` → `parse_customers_csv(path)`. Only the top deal grid; the vendor/prospect/goals scratch below the deals has no MID so it's skipped automatically.
+   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. Pull it yourself with the Drive MCP `download_file_content` and `exportMimeType: text/csv`, then base64-decode to a file and parse with `scripts/parse_customers_csv.py` → `parse_customers_csv(path)`. Do NOT use `read_file_content` on this sheet — that path truncates around row 159. The CSV export returns all rows, so there is no need to ask Bryce to export it by hand. Only the top deal grid parses; the vendor/prospect/goals scratch below the deals has no MID so it's skipped automatically.
    - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`), read via Drive MCP. Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
 2. Parse payouts with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Parse deals with `scripts/parse_customers_csv.py`.
 3. POST to Railway `/api/ingest` with `X-API-Key`:

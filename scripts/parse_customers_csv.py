@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Parse the 'Customers' sheet CSV export into deal ingest rows.
 
-Bryce exports the Customers sheet as CSV (File > Download > CSV) — the Drive
-MCP truncates ~row 159, so CSV export is the reliable way to get all rows.
+Fetch the Customers sheet via the Drive MCP download_file_content with
+exportMimeType 'text/csv' — that returns every row. (read_file_content on the
+same sheet truncates around row 159, so don't use it here.)
 Claude runs this, then POSTs {"type":"deals","deals":[...]} to /api/ingest.
 See CLAUDE.md → "Commissions Refresh Workflow".
 
