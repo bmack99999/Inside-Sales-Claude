@@ -32,9 +32,9 @@ _ROW = re.compile(
     r"([A-Za-z0-9 ]+?),\s*"
     r"(Upfront|True up/down|Upgrade|Adjustment|DMS - Upfront|DMS - True-up/down|DMS - SaaS),\s*"
     r"([\d/]*),\s*"
-    r"(\$?\s*[\d,]*\.?\d*|\$-|\$ -|)\s*,\s*"
+    r"(\"?\s*\$?\s*\(?[\d,]*\.?\d*\)?\s*\"?|\$-|\$ -|)\s*,\s*"
     r"([\d/]*),\s*"
-    r"(\$?\(?[\d,]*\.?\d*\)?|\$-|\$ -|)\s*,\s*"
+    r"(\"?\s*\$?\s*\(?[\d,]*\.?\d*\)?\s*\"?|\$-|\$ -|)\s*,\s*"
     r"(\d{8})"
     r"(?:,\s*[A-Za-z ]*,\s*([^,]*?)\s*,\s*[\d/.]*,)?",
     re.I,

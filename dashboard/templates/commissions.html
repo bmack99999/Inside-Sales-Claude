@@ -11,157 +11,172 @@
   </div>
 </div>
 
-<!-- KPI tiles -->
-<div class="boss-funnel-row" style="grid-template-columns: repeat(4, 1fr); display:grid; gap:14px;">
-  <div class="boss-card">
-    <div class="boss-card-icon">📅</div>
-    <div class="boss-card-label">This Pay Cycle</div>
-    <div class="boss-card-value">${{ '{:,.0f}'.format(view.kpis.current_cycle_total) }}</div>
+{% if view.cycles %}
+<div class="log-table-card cyc-card">
+  <div class="cyc-head">
+    <div class="cyc-head-left">
+      <label for="cycle-select" class="cyc-head-label">Pay cycle</label>
+      <select id="cycle-select">
+        {% for c in view.cycles %}
+        <option value="{{ c.cycle }}">{{ c.label }} &nbsp;·&nbsp; {{ c.cycle }} &nbsp;·&nbsp; ${{ '{:,.2f}'.format(c.total) }}</option>
+        {% endfor %}
+      </select>
+      <span class="cyc-count">{{ view.cycles|length }} cycles on record</span>
+    </div>
+    <div class="cyc-head-right">
+      <button id="cyc-prev" class="cyc-nav" type="button" title="Newer cycle">&lsaquo;</button>
+      <button id="cyc-next" class="cyc-nav" type="button" title="Older cycle">&rsaquo;</button>
+    </div>
   </div>
-  <div class="boss-card">
-    <div class="boss-card-icon">💰</div>
-    <div class="boss-card-label">Paid YTD</div>
-    <div class="boss-card-value">${{ '{:,.0f}'.format(view.kpis.ytd) }}</div>
-  </div>
-  <div class="boss-card">
-    <div class="boss-card-icon">⏳</div>
-    <div class="boss-card-label">True-Ups Pending</div>
-    <div class="boss-card-value">{{ view.kpis.pipeline_count }}</div>
-  </div>
-  <div class="boss-card">
-    <div class="boss-card-icon">🏆</div>
-    <div class="boss-card-label">Lifetime</div>
-    <div class="boss-card-value">${{ '{:,.0f}'.format(view.kpis.lifetime) }}</div>
-  </div>
+
+  {% for c in view.cycles %}
+  <section class="cyc-pane" data-cycle="{{ c.cycle }}" {% if not loop.first %}hidden{% endif %}>
+    <div class="cyc-hero">
+      <div class="cyc-hero-main">
+        <div class="cyc-hero-label">
+          Paid {{ c.label }}
+          <span class="cyc-code">cycle {{ c.cycle }}</span>
+        </div>
+        <div class="cyc-hero-value">${{ '{:,.2f}'.format(c.total) }}</div>
+        <div class="cyc-hero-sub">
+          {{ c.lines|length }} line{{ '' if c.lines|length == 1 else 's' }} ·
+          {{ c.merchant_count }} merchant{{ '' if c.merchant_count == 1 else 's' }}
+          {% if c.delta is not none %}
+            · <span class="delta {{ 'up' if c.delta >= 0 else 'down' }}">{{ '+' if c.delta >= 0 else '−' }}${{ '{:,.0f}'.format(c.delta|abs) }}{% if c.delta_pct is not none %} ({{ '+' if c.delta_pct >= 0 else '−' }}{{ '{:,.0f}'.format(c.delta_pct|abs) }}%){% endif %} vs prior</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="cyc-hero-bars">
+        {% set mx = [c.by_type.upfront, c.by_type.true_up, c.by_type.saas, c.by_type.adjustment|abs, c.by_type.upgrade]|max %}
+        {% for key, lbl in [('upfront','Upfront'), ('true_up','True-Up'), ('saas','SaaS'), ('adjustment','Adjustment'), ('upgrade','Upgrade')] %}
+          {% set val = c.by_type[key] %}
+          {% if val %}
+          <div class="cyc-bar-row">
+            <span class="cyc-bar-lbl">{{ lbl }}</span>
+            <span class="cyc-bar-track"><span class="cyc-bar-fill t-{{ key }}{{ ' neg' if val < 0 }}" style="width: {{ ((val|abs / mx * 100) if mx else 0)|round(1) }}%"></span></span>
+            <span class="cyc-bar-val{{ ' neg' if val < 0 }}">{% if val < 0 %}−${{ '{:,.0f}'.format(-val) }}{% else %}${{ '{:,.0f}'.format(val) }}{% endif %}</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <table class="ml-table cyc-lines">
+      <thead>
+        <tr><th>Type</th><th>Account</th><th class="col-mid">MID</th><th class="num">Amount</th></tr>
+      </thead>
+      <tbody>
+        {% for ln in c.lines %}
+        <tr>
+          <td><span class="pill p-{{ ln.type }}">{{ ln.type_label }}</span></td>
+          <td><span class="acct">{{ ln.account }}</span>{% if not ln.in_registry %} <span class="pill p-missing" title="Paid MID with no row in your Customers sheet">not in log</span>{% endif %}</td>
+          <td class="col-mid mono">{{ ln.mid }}</td>
+          <td class="num money{{ ' neg' if ln.amount < 0 }}">{% if ln.amount < 0 %}−${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3">Total{% if c.clawback_total %} <span class="foot-note">includes −${{ '{:,.2f}'.format(-c.clawback_total) }} in clawbacks</span>{% endif %}</td>
+          <td class="num money total">${{ '{:,.2f}'.format(c.total) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+  {% endfor %}
 </div>
 
-<!-- Current cycle audit -->
-{% if view.current_cycle %}
-{% set c = view.current_cycle %}
-<div class="log-table-card" style="margin-top:18px;">
-  <div class="log-table-title">
-    Current Pay Cycle — <strong>{{ c.cycle }}</strong>
-    {% if c.date_paid %}<span style="color:#888;font-weight:400"> (paid {{ c.date_paid }})</span>{% endif %}
-    <span style="float:right;font-weight:700;color:#0a4">${{ '{:,.2f}'.format(c.total) }}</span>
+<div class="stat-strip">
+  <div class="stat">
+    <div class="stat-label">Paid YTD</div>
+    <div class="stat-value">${{ '{:,.0f}'.format(view.kpis.ytd) }}</div>
   </div>
-  <div class="cycle-breakdown">
-    <span class="chip">Upfront <b>${{ '{:,.0f}'.format(c.by_type.upfront) }}</b></span>
-    <span class="chip">True-Up <b>${{ '{:,.0f}'.format(c.by_type.true_up) }}</b></span>
-    <span class="chip">SaaS <b>${{ '{:,.0f}'.format(c.by_type.saas) }}</b></span>
-    {% if c.by_type.adjustment %}<span class="chip">Adj <b>${{ '{:,.0f}'.format(c.by_type.adjustment) }}</b></span>{% endif %}
-    {% if c.by_type.upgrade %}<span class="chip">Upgrade <b>${{ '{:,.0f}'.format(c.by_type.upgrade) }}</b></span>{% endif %}
+  <div class="stat">
+    <div class="stat-label">Lifetime</div>
+    <div class="stat-value">${{ '{:,.0f}'.format(view.kpis.lifetime) }}</div>
   </div>
-  <table class="ml-table" style="margin-top:10px">
-    <thead><tr><th>Type</th><th>Account</th><th>MID</th><th style="text-align:right">Amount</th></tr></thead>
-    <tbody>
-      {% for ln in c.lines %}
-      <tr>
-        <td><span class="badge badge-{{ {'upfront':'cool','true_up':'warm','saas':'hot','adjustment':'cold','upgrade':'cool'}.get(ln.type,'cold') }}">{{ ln.type_label }}</span></td>
-        <td><strong>{{ ln.account }}</strong></td>
-        <td class="mono">{{ ln.mid }}</td>
-        <td style="text-align:right;font-weight:600;{% if ln.amount < 0 %}color:#c0392b{% endif %}">
-          {% if ln.amount < 0 %}-${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="stat">
+    <div class="stat-label">True-ups expected</div>
+    <div class="stat-value">{{ view.kpis.pipeline_count }}</div>
+  </div>
+  <div class="stat{{ ' stat-warn' if view.kpis.stale_count }}">
+    <div class="stat-label">Aging past 90d</div>
+    <div class="stat-value">{{ view.kpis.stale_count }}</div>
+  </div>
 </div>
 {% else %}
-<div class="log-table-card" style="margin-top:18px;padding:24px;text-align:center;color:#888">
+<div class="log-table-card empty-state">
   No commission payouts loaded yet. Say <strong>"refresh commissions"</strong> to pull the sheets.
 </div>
 {% endif %}
 
-<!-- Pending true-ups (pipeline) -->
-{% if view.pipeline %}
-<details style="margin-top:18px;" open>
-  <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:8px 0;">
-    True-Ups Pending ({{ view.pipeline|length }}) — boarded, upfront paid, true-up not yet cycled
-  </summary>
-  <div class="log-table-card" style="margin-top:8px">
-    <table class="ml-table">
-      <thead><tr><th>Account</th><th>MID</th><th>Signed</th></tr></thead>
-      <tbody>
-        {% for p in view.pipeline %}
-        <tr><td><strong>{{ p.account }}</strong></td><td class="mono">{{ p.mid }}</td><td>{{ p.sign_date or '—' }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</details>
-{% endif %}
-
-<!-- Pay cycle history -->
-{% if view.history %}
-<details style="margin-top:18px;">
-  <summary style="cursor:pointer;font-weight:600;font-size:15px;padding:8px 0;">
-    Pay Cycle History ({{ view.history|length }})
-  </summary>
-  <div class="log-table-card" style="margin-top:8px">
-    <table class="ml-table">
-      <thead><tr>
-        <th>Cycle</th><th>Paid</th><th>Upfront</th><th>True-Up</th><th>SaaS</th><th style="text-align:right">Total</th>
-      </tr></thead>
-      <tbody>
-        {% for h in view.history %}
-        <tr>
-          <td><strong>{{ h.cycle }}</strong></td>
-          <td>{{ h.date_paid or '—' }}</td>
-          <td>${{ '{:,.0f}'.format(h.by_type.upfront) }}</td>
-          <td>${{ '{:,.0f}'.format(h.by_type.true_up) }}</td>
-          <td>${{ '{:,.0f}'.format(h.by_type.saas) }}</td>
-          <td style="text-align:right;font-weight:700">${{ '{:,.2f}'.format(h.total) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</details>
-{% endif %}
-
-<!-- Per-deal drill -->
-<div style="margin-top:22px;display:flex;gap:10px;align-items:center;">
-  <input type="text" id="deal-search" placeholder="Search a restaurant or MID..."
-         style="flex:1;padding:8px 12px;border:1px solid #ccc;border-radius:6px;">
+{% if view.pipeline or view.stale_pipeline %}
+<div class="log-table-card sect">
+  <div class="log-table-title">Outstanding True-Ups</div>
+  {% if view.pipeline %}
+  <div class="sub-head">Still in window — upfront paid, true-up expected ({{ view.pipeline|length }})</div>
+  <table class="ml-table">
+    <thead><tr><th>Account</th><th class="col-mid">MID</th><th>Signed</th><th class="num">Age</th></tr></thead>
+    <tbody>
+      {% for p in view.pipeline %}
+      <tr>
+        <td><span class="acct">{{ p.account }}</span>{% if not p.in_registry %} <span class="pill p-missing">not in log</span>{% endif %}</td>
+        <td class="col-mid mono">{{ p.mid }}</td>
+        <td>{{ p.sign_date or '—' }}</td>
+        <td class="num">{% if p.age_days is not none and p.age_days >= 0 %}{{ p.age_days }}d{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if view.stale_pipeline %}
+  <div class="sub-head warn">Aging past 90 days — low volume, may never true up ({{ view.stale_pipeline|length }})</div>
+  <table class="ml-table">
+    <thead><tr><th>Account</th><th class="col-mid">MID</th><th>Signed</th><th class="num">Age</th></tr></thead>
+    <tbody>
+      {% for p in view.stale_pipeline %}
+      <tr class="row-warn">
+        <td><span class="acct">{{ p.account }}</span></td>
+        <td class="col-mid mono">{{ p.mid }}</td>
+        <td>{{ p.sign_date or '—' }}</td>
+        <td class="num">{{ p.age_days }}d</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
-<div class="log-table-card" style="margin-top:12px;">
+{% endif %}
+
+<div class="log-table-card sect">
+  <div class="log-table-title lookup-head">
+    <span>Deal Lookup <span class="foot-note">across every cycle</span></span>
+    <input type="text" id="deal-search" placeholder="Search restaurant or MID…">
+  </div>
   <table class="ml-table" id="deal-table">
-    <thead><tr>
-      <th>Account</th><th>Signed</th><th>Type</th><th>MID</th>
-      <th style="text-align:right">Total Paid</th><th>Payouts</th>
-    </tr></thead>
+    <thead>
+      <tr><th>Account</th><th>Signed</th><th>Type</th><th class="col-mid">MID</th><th class="num">Total Paid</th><th class="num">Payouts</th></tr>
+    </thead>
     <tbody>
       {% for l in ledger %}
       <tr class="deal-row" data-search="{{ (l.site or '')|lower }} {{ l.mid }}">
-        <td>
-          <strong>{{ l.site }}</strong>
-          {% if not l.in_registry %}<span class="badge badge-cold" title="MID paid but not in your Customers sheet">not in log</span>{% endif %}
-        </td>
+        <td><span class="acct">{{ l.site }}</span>{% if not l.in_registry %} <span class="pill p-missing" title="MID paid but not in your Customers sheet">not in log</span>{% endif %}</td>
         <td>{{ l.sign_date or '—' }}</td>
         <td>{{ l.deal_type or '—' }}</td>
-        <td class="mono">{{ l.mid }}</td>
-        <td style="text-align:right;font-weight:700;{% if l.total_paid < 0 %}color:#c0392b{% endif %}">
-          {% if l.total_paid < 0 %}-${{ '{:,.2f}'.format(-l.total_paid) }}{% else %}${{ '{:,.2f}'.format(l.total_paid) }}{% endif %}
-        </td>
-        <td>
-          {% if l.lines %}
-          <button class="drill-btn" onclick="this.closest('tr').nextElementSibling.classList.toggle('hidden')">{{ l.payout_count }} ▾</button>
-          {% else %}<span style="color:#aaa">—</span>{% endif %}
-        </td>
+        <td class="col-mid mono">{{ l.mid }}</td>
+        <td class="num money{{ ' neg' if l.total_paid < 0 }}">{% if l.total_paid < 0 %}−${{ '{:,.2f}'.format(-l.total_paid) }}{% else %}${{ '{:,.2f}'.format(l.total_paid) }}{% endif %}</td>
+        <td class="num">{% if l.lines %}<button class="drill-btn" type="button" aria-expanded="false">{{ l.payout_count }} <span class="caret">▾</span></button>{% else %}<span class="dash">—</span>{% endif %}</td>
       </tr>
       {% if l.lines %}
-      <tr class="drill-row hidden">
+      <tr class="drill-row" hidden>
         <td colspan="6">
           <table class="drill-inner">
             {% for ln in l.lines %}
             <tr>
-              <td style="width:120px">{{ ln.type_label }}</td>
-              <td style="width:110px">{{ ln.date_paid or '—' }}</td>
-              <td style="color:#888">{{ ln.department or '' }}</td>
-              <td style="text-align:right;{% if ln.amount < 0 %}color:#c0392b{% endif %}">
-                {% if ln.amount < 0 %}-${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}
-              </td>
+              <td class="di-type">{{ ln.type_label }}</td>
+              <td class="di-date">{{ ln.date_paid or '—' }}</td>
+              <td class="di-dept">{{ ln.department or '' }}</td>
+              <td class="num money{{ ' neg' if ln.amount < 0 }}">{% if ln.amount < 0 %}−${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}</td>
             </tr>
             {% endfor %}
           </table>
@@ -171,41 +186,66 @@
       {% endfor %}
     </tbody>
   </table>
+  <div id="deal-empty" class="empty-state" hidden>No deals match that search.</div>
 </div>
-
-<style>
-  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
-  .badge-cool { background:#e7f0ff; color:#1a5fb4; }
-  .badge-warm { background:#fff3cd; color:#8a6d3b; }
-  .badge-hot  { background:#d4edda; color:#155724; }
-  .badge-cold { background:#f0f0f0; color:#666; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:#555; }
-  .cycle-breakdown { margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; }
-  .chip { background:#f4f6fa; border:1px solid #e2e8f0; border-radius:14px; padding:4px 12px; font-size:13px; color:#555; }
-  .chip b { color:var(--navy); margin-left:3px; }
-  .drill-btn { background:#eef2f8; border:1px solid #dde3ea; border-radius:6px; padding:3px 10px; cursor:pointer; font-size:12px; color:var(--navy); }
-  .drill-row.hidden { display:none; }
-  .drill-inner { width:100%; background:#fafbfd; }
-  .drill-inner td { padding:5px 10px; font-size:13px; border-top:1px solid #eef1f5; }
-</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-(function() {
-  const search = document.getElementById('deal-search');
-  search.addEventListener('input', () => {
-    const q = search.value.toLowerCase().trim();
-    document.querySelectorAll('#deal-table tbody tr.deal-row').forEach(tr => {
-      const match = !q || (tr.dataset.search || '').includes(q);
-      tr.style.display = match ? '' : 'none';
-      const drill = tr.nextElementSibling;
-      if (drill && drill.classList.contains('drill-row')) {
-        if (!match) drill.classList.add('hidden');
-        drill.style.display = match ? '' : 'none';
-      }
+(function () {
+  var sel   = document.getElementById('cycle-select');
+  var panes = Array.prototype.slice.call(document.querySelectorAll('.cyc-pane'));
+  var prev  = document.getElementById('cyc-prev');
+  var next  = document.getElementById('cyc-next');
+
+  if (sel && panes.length) {
+    var show = function (cycle) {
+      panes.forEach(function (p) { p.hidden = (p.dataset.cycle !== cycle); });
+      sel.value = cycle;
+      prev.disabled = (sel.selectedIndex <= 0);
+      next.disabled = (sel.selectedIndex >= sel.options.length - 1);
+    };
+    sel.addEventListener('change', function () { show(sel.value); });
+    prev.addEventListener('click', function () {
+      if (sel.selectedIndex > 0) show(sel.options[sel.selectedIndex - 1].value);
+    });
+    next.addEventListener('click', function () {
+      if (sel.selectedIndex < sel.options.length - 1) show(sel.options[sel.selectedIndex + 1].value);
+    });
+    show(sel.value);
+  }
+
+  document.querySelectorAll('#deal-table .drill-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var drill = btn.closest('tr').nextElementSibling;
+      if (!drill || !drill.classList.contains('drill-row')) return;
+      var open = !drill.hidden;
+      drill.hidden = open;
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.classList.toggle('is-open', !open);
     });
   });
+
+  var search = document.getElementById('deal-search');
+  var empty  = document.getElementById('deal-empty');
+  if (search) {
+    search.addEventListener('input', function () {
+      var q = search.value.toLowerCase().trim();
+      var shown = 0;
+      document.querySelectorAll('#deal-table tbody tr.deal-row').forEach(function (tr) {
+        var match = !q || (tr.dataset.search || '').indexOf(q) !== -1;
+        tr.hidden = !match;
+        if (match) shown++;
+        var drill = tr.nextElementSibling;
+        if (drill && drill.classList.contains('drill-row') && !match) {
+          drill.hidden = true;
+          var b = tr.querySelector('.drill-btn');
+          if (b) { b.setAttribute('aria-expanded', 'false'); b.classList.remove('is-open'); }
+        }
+      });
+      if (empty) empty.hidden = (shown !== 0);
+    });
+  }
 })();
 </script>
 {% endblock %}

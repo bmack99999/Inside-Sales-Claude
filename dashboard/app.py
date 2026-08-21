@@ -618,9 +618,24 @@ _PAYOUT_TYPE_LABELS = {
 }
 
 
+def _cycle_label(cycle, date_paid):
+    """Human label for a pay cycle. The cycle code is offset from the actual
+    payday (cycle 20260802 pays 8/28; 20260602 paid 7/2), and a calendar month
+    can hold two paydays — July 2026 had both 20260602 and 20260702 — so the
+    payday leads and the cycle code stays as the secondary identifier."""
+    d = _parse_iso(date_paid)
+    if not d:
+        return cycle or 'Unknown'
+    return '%s %d, %d' % (d.strftime('%b'), d.day, d.year)
+
+
 def _commission_view(payouts, deals):
-    """Build the whole commission page payload from payout lines joined to deals.
-    payouts/deals are lists of dicts (to_dict output). MID is the join key."""
+    """Build the commission page payload from payout lines joined to deals.
+    payouts/deals are lists of dicts (to_dict output). MID is the join key.
+
+    Every pay cycle is emitted as a self-contained block (tiles, type
+    breakdown, line items) so the page can switch between cycles client-side
+    without another round trip."""
     today = date.today()
     deal_by_mid = {d['mid']: d for d in deals if d.get('mid')}
 
@@ -628,12 +643,11 @@ def _commission_view(payouts, deals):
         d = deal_by_mid.get(p.get('mid'))
         if d and d.get('site'):
             return d['site']
-        return (p.get('dba_name') or '').title() or 'Unknown'
+        return (p.get('dba_name') or '').title() or (p.get('mid') or 'Unknown')
 
-    # ── Tiles: lifetime, YTD, and per-cycle totals ────────────────────────────
     lifetime = 0.0
     ytd = 0.0
-    by_cycle = {}   # pay_cycle → {'cycle','date_paid','lines':[],'total','by_type':{}}
+    by_cycle = {}
     for p in payouts:
         amt = p.get('amount') or 0.0
         lifetime += amt
@@ -653,6 +667,7 @@ def _commission_view(payouts, deals):
             'type_label': _PAYOUT_TYPE_LABELS.get(p.get('payout_type'), p.get('payout_type')),
             'amount': round(amt, 2), 'date_paid': p.get('date_paid'),
             'department': p.get('department'),
+            'in_registry': p.get('mid') in deal_by_mid,
         })
         b['total'] += amt
         if p.get('payout_type') in b['by_type']:
@@ -663,19 +678,40 @@ def _commission_view(payouts, deals):
     for b in by_cycle.values():
         b['total'] = round(b['total'], 2)
         b['by_type'] = {k: round(v, 2) for k, v in b['by_type'].items()}
-        b['lines'].sort(key=lambda x: (-abs(x['amount'])))
+        # biggest money first, but keep negatives (clawbacks) visible at the end
+        b['lines'].sort(key=lambda x: (x['amount'] < 0, -abs(x['amount'])))
+        b['label'] = _cycle_label(b['cycle'], b['date_paid'])
+        b['merchant_count'] = len({l['mid'] for l in b['lines'] if l['mid']})
+        b['clawback_total'] = round(
+            sum(l['amount'] for l in b['lines'] if l['amount'] < 0), 2)
 
     cycles = sorted(by_cycle.values(),
                     key=lambda x: (x['date_paid'] or '', x['cycle']), reverse=True)
+
+    # Cycle-over-cycle delta, computed on the chronological ordering
+    for i, c in enumerate(cycles):
+        prev = cycles[i + 1] if i + 1 < len(cycles) else None
+        c['prev_total'] = prev['total'] if prev else None
+        c['delta'] = (round(c['total'] - prev['total'], 2) if prev else None)
+        c['delta_pct'] = (round((c['total'] - prev['total']) / prev['total'] * 100, 1)
+                          if prev and prev['total'] else None)
+
     current_cycle = cycles[0] if cycles else None
     history = cycles[1:] if len(cycles) > 1 else []
 
     # ── Projected pipeline: deals boarded but not yet trued-up ────────────────
-    # A deal has a true-up ~2 months after boarding. If we've paid an upfront
-    # for its MID but no true_up line exists yet, the true-up is still coming.
+    # A deal trues up ~2 months after boarding. If an upfront was paid for a MID
+    # but no true_up line exists, the true-up is still outstanding. Split live
+    # from stale so a dead low-volume merchant doesn't read as money coming.
     paid_types_by_mid = {}
+    upfront_date_by_mid = {}
     for p in payouts:
-        paid_types_by_mid.setdefault(p.get('mid'), set()).add(p.get('payout_type'))
+        mid = p.get('mid')
+        paid_types_by_mid.setdefault(mid, set()).add(p.get('payout_type'))
+        if p.get('payout_type') == 'upfront':
+            dp = p.get('date_paid')
+            if dp and (mid not in upfront_date_by_mid or dp > upfront_date_by_mid[mid]):
+                upfront_date_by_mid[mid] = dp
 
     pipeline = []
     for mid, types in paid_types_by_mid.items():
@@ -683,24 +719,43 @@ def _commission_view(payouts, deals):
             continue
         if 'upfront' in types and 'true_up' not in types:
             d = deal_by_mid.get(mid)
+            up_date = upfront_date_by_mid.get(mid)
+            # Age from when the deal actually boarded, not the upfront's
+            # date_paid — that field is the upcoming payday and can be in the
+            # future, which would read as a negative age.
+            anchor = _parse_iso(d.get('sign_date')) if d else None
+            if anchor is None:
+                anchor = _parse_iso(up_date)
+            age = (today - anchor).days if anchor else None
             pipeline.append({
                 'mid': mid,
                 'account': (d['site'] if d and d.get('site') else mid),
                 'sign_date': (d.get('sign_date') if d else None),
+                'upfront_date': up_date,
+                'age_days': age,
+                # past ~2 cycles with no true-up means volume never materialized
+                'stale': bool(age is not None and age > 90),
+                'in_registry': d is not None,
             })
-    pipeline.sort(key=lambda x: (x['sign_date'] or ''), reverse=True)
+    pipeline.sort(key=lambda x: (x['upfront_date'] or x['sign_date'] or ''), reverse=True)
+    live_pipeline = [p for p in pipeline if not p['stale']]
+    stale_pipeline = [p for p in pipeline if p['stale']]
 
     kpis = {
         'lifetime': round(lifetime, 2),
         'ytd': round(ytd, 2),
         'current_cycle_total': (current_cycle['total'] if current_cycle else 0.0),
-        'pipeline_count': len(pipeline),
+        'pipeline_count': len(live_pipeline),
+        'stale_count': len(stale_pipeline),
+        'cycle_count': len(cycles),
     }
     return {
         'kpis': kpis,
         'current_cycle': current_cycle,
+        'cycles': cycles,
         'history': history,
-        'pipeline': pipeline,
+        'pipeline': live_pipeline,
+        'stale_pipeline': stale_pipeline,
     }
 
 

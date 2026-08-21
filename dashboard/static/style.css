@@ -1880,3 +1880,185 @@ body {
 .tpl-richtext:focus { outline: none; border-color: var(--navy-light); }
 .tpl-richtext:empty:before { content: attr(data-placeholder); color: #aaa; }
 .tpl-richtext a, .tpl-tile-body a { color: var(--navy-light); text-decoration: underline; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Commissions page — pay-cycle browser
+   One cycle = one paycheck. Cycle code is offset from payday and a month can
+   hold two paydays, so the UI keys off the cycle, labelled by payday.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.cyc-card { padding: 0; overflow: hidden; }
+
+.cyc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 14px 18px;
+  background: #fbfcfe;
+  border-bottom: 1px solid var(--border);
+}
+.cyc-head-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cyc-head-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--text-light);
+}
+#cycle-select {
+  font-size: 14px; font-weight: 600; color: var(--navy);
+  padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; cursor: pointer; min-width: 340px;
+  font-variant-numeric: tabular-nums;
+}
+#cycle-select:focus { outline: 2px solid var(--cool); outline-offset: 1px; }
+.cyc-count { font-size: 12px; color: var(--text-light); }
+
+.cyc-head-right { display: flex; gap: 6px; }
+.cyc-nav {
+  width: 32px; height: 32px; line-height: 1;
+  font-size: 18px; color: var(--navy);
+  border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; cursor: pointer;
+}
+.cyc-nav:hover:not(:disabled) { background: var(--cool-bg); border-color: var(--cool); }
+.cyc-nav:disabled { opacity: .35; cursor: default; }
+
+/* ── Hero: the number, and where it came from ─────────────────────────────── */
+.cyc-hero {
+  display: grid; grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr);
+  gap: 28px; align-items: center;
+  padding: 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.cyc-hero-label { font-size: 13px; color: var(--text-light); margin-bottom: 4px; }
+.cyc-code {
+  display: inline-block; margin-left: 6px; padding: 2px 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: #6b7280;
+  background: #f1f4f8; border-radius: 5px;
+}
+.cyc-hero-value {
+  font-size: 40px; font-weight: 800; line-height: 1.05; color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+.cyc-hero-sub { margin-top: 6px; font-size: 12.5px; color: var(--text-light); }
+.delta { font-weight: 700; }
+.delta.up   { color: #0a7d3f; }
+.delta.down { color: var(--hot); }
+
+.cyc-bar-row {
+  display: grid; grid-template-columns: 82px 1fr 76px;
+  align-items: center; gap: 10px; margin-bottom: 7px;
+}
+.cyc-bar-row:last-child { margin-bottom: 0; }
+.cyc-bar-lbl { font-size: 12px; color: var(--text-light); }
+.cyc-bar-track {
+  height: 9px; background: #eef1f5; border-radius: 5px; overflow: hidden;
+}
+.cyc-bar-fill { display: block; height: 100%; border-radius: 5px; background: var(--cool); }
+.cyc-bar-fill.t-upfront    { background: #2a5298; }
+.cyc-bar-fill.t-true_up    { background: #0a7d3f; }
+.cyc-bar-fill.t-saas       { background: #1a6ea8; }
+.cyc-bar-fill.t-upgrade    { background: #6b3fa0; }
+.cyc-bar-fill.t-adjustment { background: var(--warm); }
+.cyc-bar-fill.neg          { background: var(--hot); }
+.cyc-bar-val {
+  font-size: 12.5px; font-weight: 700; text-align: right; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cyc-bar-val.neg { color: var(--hot); }
+
+/* ── Line items ───────────────────────────────────────────────────────────── */
+.cyc-lines tfoot td {
+  padding: 10px 12px; border-top: 2px solid var(--border);
+  font-weight: 700; background: #fbfcfe;
+}
+.foot-note { font-weight: 400; font-size: 12px; color: var(--text-light); }
+
+/* Money aligns on the decimal; tabular figures keep columns straight */
+.num { text-align: right; }
+.money { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.money.neg { color: var(--hot); }
+.money.total { font-size: 15px; font-weight: 800; color: var(--navy); }
+.acct { font-weight: 600; }
+.dash { color: #b6bfc9; }
+.col-mid { width: 104px; }
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; color: #6b7280;
+}
+
+/* ── Pills replace the old emoji-coded badges ─────────────────────────────── */
+.pill {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: .2px; white-space: nowrap;
+}
+.p-upfront    { background: #e8eefb; color: #2a5298; }
+.p-true_up    { background: #e3f5ea; color: #0a7d3f; }
+.p-saas       { background: var(--cool-bg); color: var(--cool); }
+.p-upgrade    { background: #f2ecfa; color: #6b3fa0; }
+.p-adjustment { background: var(--warm-bg); color: var(--warm); }
+.p-missing    { background: var(--warm-bg); color: var(--warm); margin-left: 6px; }
+
+/* ── Standing context strip ───────────────────────────────────────────────── */
+.stat-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-top: 14px;
+}
+.stat {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 12px 16px;
+}
+.stat-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--text-light); margin-bottom: 3px;
+}
+.stat-value {
+  font-size: 24px; font-weight: 800; color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+.stat-warn { border-color: #f0d9b8; background: #fffdf8; }
+.stat-warn .stat-value { color: var(--warm); }
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+.sect { margin-top: 18px; }
+.sub-head {
+  padding: 10px 14px 8px;
+  font-size: 12px; font-weight: 700; color: var(--text-light);
+  text-transform: uppercase; letter-spacing: .4px;
+}
+.sub-head.warn { color: var(--warm); }
+.row-warn { background: #fffdf8; }
+.empty-state { padding: 22px; text-align: center; color: var(--text-light); }
+
+.lookup-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+#deal-search {
+  flex: 0 1 300px; padding: 7px 12px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+}
+#deal-search:focus { outline: 2px solid var(--cool); outline-offset: 1px; }
+
+/* ── Deal drill-down ──────────────────────────────────────────────────────── */
+.drill-btn {
+  background: #eef2f8; border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 10px; cursor: pointer; font-size: 12px; color: var(--navy);
+  font-weight: 600;
+}
+.drill-btn:hover { background: var(--cool-bg); border-color: var(--cool); }
+.drill-btn .caret { display: inline-block; transition: transform .15s ease; }
+.drill-btn.is-open .caret { transform: rotate(180deg); }
+.drill-inner { width: 100%; background: #fafbfd; border-collapse: collapse; }
+.drill-inner td {
+  padding: 5px 10px; font-size: 12.5px; border-top: 1px solid #eef1f5;
+}
+.drill-inner .di-type { width: 120px; font-weight: 600; }
+.drill-inner .di-date { width: 110px; color: var(--text-light); }
+.drill-inner .di-dept { color: var(--text-light); }
+
+@media (max-width: 860px) {
+  .cyc-hero { grid-template-columns: 1fr; gap: 18px; }
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+  #cycle-select { min-width: 0; width: 100%; }
+  .col-mid { display: none; }
+}
