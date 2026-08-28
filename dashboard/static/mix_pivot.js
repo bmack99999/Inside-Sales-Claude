@@ -11,6 +11,8 @@ let _mixSortCol = 'index_pct';
 let _mixSortAsc = false;
 let _mixExpanded = new Set();
 let _mixTrendChart = null;
+let _mixWinsChart = null;
+let _mixWinsRep = '';
 
 function _activeMix() {
   if (_mixMonthKey && _mixData.monthly && _mixData.monthly[_mixMonthKey]) {
@@ -338,6 +340,73 @@ function renderMixTrend() {
   });
 }
 
+// ── Wins vs Expected Wins by month ────────────────────────────────────────────
+// One line for actual Closed Won, one for expected wins (lead mix x team-average
+// close rates). Default is team totals; the dropdown scopes it to a single rep.
+
+function _mixWinsSeries(repName) {
+  const monthly = (_mixData && _mixData.monthly) || {};
+  const keys = Object.keys(monthly).sort();
+  const labels = [], won = [], exp = [], notes = [];
+  keys.forEach(k => {
+    const mix = monthly[k];
+    const rates = _effRates(mix);
+    const rows = (mix.reps || []).map(r => _repTotals(r, rates, ''));
+    let W = null, E = null, n = '';
+    if (repName) {
+      const r = rows.find(x => x.name === repName);
+      if (r && (r.leads > 0 || r.won > 0)) {
+        W = r.won; E = +r.expected_won.toFixed(1);
+        n = r.leads + ' leads';
+      }
+    } else {
+      W = rows.reduce((a, r) => a + r.won, 0);
+      E = +rows.reduce((a, r) => a + r.expected_won, 0).toFixed(1);
+      n = rows.reduce((a, r) => a + r.leads, 0) + ' team leads';
+    }
+    labels.push((mix.month_label || k).split(' ')[0]);
+    won.push(W);
+    exp.push(E);
+    notes.push(n);
+  });
+  return { labels, won, exp, notes };
+}
+
+function renderMixWins() {
+  const canvas = document.getElementById('mix-wins-canvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const { labels, won, exp, notes } = _mixWinsSeries(_mixWinsRep);
+  if (_mixWinsChart) _mixWinsChart.destroy();
+  _mixWinsChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: (_mixWinsRep || 'Team') + ' — Closed Won', data: won,
+          borderColor: '#1f3a5f', backgroundColor: '#1f3a5f',
+          borderWidth: 2.5, tension: 0.25, pointRadius: 4, spanGaps: true },
+        { label: 'Expected Won', data: exp,
+          borderColor: '#9ca3af', backgroundColor: '#9ca3af',
+          borderWidth: 2, borderDash: [6, 4], tension: 0.25, pointRadius: 3, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: {
+          label: c => c.dataset.label + ': ' + (c.parsed.y == null ? '\u2014' : c.parsed.y),
+          afterLabel: c => notes[c.dataIndex] || '',
+        } },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
 function exportMixCSV() {
   const rows = _mixRows();
   rows.sort((a, b) => _mixSortCol === 'name'
@@ -390,6 +459,7 @@ function renderMixAdjusted(mix) {
     _mixValid = e.target.checked;
     applyMixWindow();
     renderMixTrend();
+    renderMixWins();
   };
 
   document.getElementById('mix-export-btn').onclick = exportMixCSV;
@@ -407,10 +477,24 @@ function renderMixAdjusted(mix) {
       _mixUW = e.target.checked;
       applyMixWindow();
       renderMixTrend();
+      renderMixWins();
     };
   }
   const trendMetric = document.getElementById('mix-trend-metric');
   if (trendMetric) trendMetric.onchange = renderMixTrend;
+
+  // Wins vs Expected chart — rep dropdown (blank = whole team)
+  const winsRepSelect = document.getElementById('mix-wins-rep');
+  if (winsRepSelect) {
+    const names = [...new Set(Object.values(monthly)
+      .flatMap(m => (m.reps || []).map(r => r.name))
+      .concat((mix.reps || []).map(r => r.name)))].sort((a, b) => a.localeCompare(b));
+    if (!names.includes(_mixWinsRep)) _mixWinsRep = '';
+    winsRepSelect.innerHTML = '<option value="">Team total</option>' +
+      names.map(n => `<option value="${n}">${n}</option>`).join('');
+    winsRepSelect.value = _mixWinsRep;
+    winsRepSelect.onchange = () => { _mixWinsRep = winsRepSelect.value; renderMixWins(); };
+  }
 
   // Optional standalone Period selector on the source-totals card
   const srcMonthSelect = document.getElementById('mix-src-month-select');
@@ -433,4 +517,5 @@ function renderMixAdjusted(mix) {
 
   applyMixWindow();
   renderMixTrend();
+  renderMixWins();
 }
