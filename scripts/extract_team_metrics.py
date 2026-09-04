@@ -63,8 +63,35 @@ def _refresh_team():
         print(f"  WARN: roster query failed ({e}) — using fallback list of "
               f"{len(TEAM)}.", file=sys.stderr)
 HISTORY_START_YEAR  = 2026
-HISTORY_START_MONTH = 3
-MIX_WINDOW_START    = "2026-03-01"
+HISTORY_START_MONTH = 1
+MIX_WINDOW_START    = "2026-01-01"
+# Per-rep effective start. A rep who transferred in from another team carries
+# leads created before their start date whose wins were credited to the old
+# team, so counting them here inflates the denominator with near-zero wins and
+# drags down both that rep's rate and the shared per-source baseline.
+# Bryce moved over in March 2026 and has 551 January leads (vs 24-113 in a
+# normal month) with only 4 wins against them — ~24% of the all-time
+# denominator at a ~0.7% rate. Excluded via a per-rep CreatedDate floor so the
+# other reps keep their January and February history.
+REP_START_OVERRIDES = {
+    "005Pd0000084UhFIAU": "2026-03-01",   # Bryce Mack — transferred in
+}
+
+
+def _rep_floor_clause(field="CreatedDate"):
+    """SOQL fragment excluding each override rep's pre-start records.
+
+    SOQL rejects `AND NOT (...)`, so this is written as the De Morgan
+    equivalent: for each override rep, either the record is not theirs or it
+    is on/after their start date.
+    """
+    if not REP_START_OVERRIDES:
+        return ""
+    out = ""
+    for oid, d in REP_START_OVERRIDES.items():
+        stamp = f"{d}T00:00:00Z" if field == "CreatedDate" else d
+        out += f" AND (OwnerId != '{oid}' OR {field} >= {stamp})"
+    return out
 # Loss reasons that mean the lead was never a real prospect — excluded from
 # denominators when the KPIs "exclude invalid leads" toggle is on.
 INVALID_LOSS_REASONS = (
@@ -192,16 +219,26 @@ def _pull_month(y, m, is_current):
     }
 
 
-def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
+def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
     """Mix-adjusted close rates for [start, end), with a full per-rep
     per-source breakdown (leads / converted / won) for the KPIs pivot table.
 
     Expected wins per rep = sum over sources of
-    (rep's leads from source x team-average close rate for source).
-    Close rate basis: deals closed in window / leads received in window.
+    (rep's leads from source x baseline close rate for source).
+
+    baseline_rates: {source: rate} computed over the full history window
+    (MIX_WINDOW_START to today). Expected Won MUST be measured against a
+    long-run baseline, not the same window being scored — using the window's
+    own rates is circular (the team always hits its own expectation exactly,
+    and index_pct collapses to ~0 by construction). A single month is also
+    far too small a sample: one win on a 2-lead source implies a 50% close
+    rate. When baseline_rates is None the in-window rates are used, which is
+    correct only for the full-history call that produces the baseline itself.
     """
     lead_end = f" AND CreatedDate < {end}T00:00:00Z" if end else ""
     win_end  = f" AND CloseDate < {end}" if end else ""
+    lead_floor = _rep_floor_clause("CreatedDate")
+    win_floor  = _rep_floor_clause("CloseDate")
 
     leads = defaultdict(lambda: defaultdict(int))   # oid -> source -> count
     conv  = defaultdict(lambda: defaultdict(int))
@@ -212,7 +249,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
         f"WHERE OwnerId IN ({TEAM_IDS}) "
-        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end}{lead_floor} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         leads[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -220,7 +257,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND IsConverted=true "
-        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end}{lead_floor} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         conv[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -228,7 +265,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Closed Won' "
-        f"AND CloseDate >= {start}{win_end} "
+        f"AND CloseDate >= {start}{win_end}{win_floor} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         wins[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -237,7 +274,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND Status='Unqualified' "
         f"AND Loss_Reason__c IN ({INVALID_LOSS_REASONS}) "
-        f"AND CreatedDate >= {start}T00:00:00Z{lead_end} "
+        f"AND CreatedDate >= {start}T00:00:00Z{lead_end}{lead_floor} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         inval[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -250,7 +287,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
         f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Underwriting Review' "
-        f"AND CreatedDate >= {start}T00:00:00Z{uw_end} "
+        f"AND CreatedDate >= {start}T00:00:00Z{uw_end}{lead_floor} "
         f"GROUP BY OwnerId, LeadSource"
     ):
         uw[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
@@ -271,7 +308,11 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
             src_inval[s] += c
         for s, c in uw[oid].items():
             src_uw[s] += c
+    # In-window rates: still what the source_rates table displays (that IS
+    # "how did this source do this month"). Expected Won uses the long-run
+    # baseline instead — see the docstring.
     rates = {s: src_wins[s] / src_leads[s] for s in src_leads if src_leads[s]}
+    exp_rates = baseline_rates if baseline_rates is not None else rates
 
     all_sources = sorted(set(src_leads) | set(src_wins) | set(src_uw),
                          key=lambda s: -src_leads.get(s, 0))
@@ -283,7 +324,8 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
         tc = sum(conv[oid].values())
         if not tl and not tw:
             continue
-        expected = sum(c * rates[s] for s, c in leads[oid].items() if s in rates)
+        expected = sum(c * exp_rates[s]
+                       for s, c in leads[oid].items() if s in exp_rates)
         by_source = {}
         for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]) | set(uw[oid]):
             by_source[s] = [leads[oid].get(s, 0), conv[oid].get(s, 0),
@@ -316,14 +358,25 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None):
          "rate_pct": round(rates.get(s, 0) * 100, 1)}
         for s in all_sources
     ]
-    return {"window_start": start, "reps": reps,
-            "source_rates": source_rates, "sources": all_sources}
+    return {"window_start": start, "window_end": end, "reps": reps,
+            "source_rates": source_rates, "sources": all_sources,
+            "baseline_rates": {s: round(r * 100, 2)
+                               for s, r in sorted(exp_rates.items())},
+            "baseline_is_window": baseline_rates is None,
+            "rep_start_overrides": dict(REP_START_OVERRIDES)}
 
 
 def _pull_mix_all_windows():
-    """Cumulative-since-March mix data plus one snapshot per month,
-    so the KPIs pivot can offer a month dropdown like the leaderboard."""
+    """Cumulative-since-January mix data plus one snapshot per month,
+    so the KPIs pivot can offer a month dropdown like the leaderboard.
+
+    The full-history call establishes the per-source baseline close rates;
+    every monthly snapshot is then scored against that same baseline so
+    Expected Won means "what this lead mix should have produced at our
+    long-run rate", not "what it produced at its own rate".
+    """
     out = _pull_mix_adjusted()
+    baseline = {s: v / 100 for s, v in out["baseline_rates"].items()}
 
     # Point-in-time count of deals sitting in UW right now (no date window),
     # so the page can show a number that matches "deals in UW today".
@@ -342,7 +395,7 @@ def _pull_mix_all_windows():
                              today.year, today.month):
         start, end = _month_bounds(y, m)
         key = f"{y:04d}-{m:02d}"
-        snap = _pull_mix_adjusted(start, end)
+        snap = _pull_mix_adjusted(start, end, baseline_rates=baseline)
         snap["month_label"] = date(y, m, 1).strftime("%B %Y")
         monthly[key] = snap
     out["monthly"] = monthly
