@@ -8,7 +8,7 @@ Bryce Mack is an inside sales rep at Shift4, selling SkyTab POS to restaurants. 
 
 **Role:** Inside Sales, Shift4 (SkyTab POS)
 **Email:** bryce.mack@shift4.com
-**Tools:** Salesforce CRM, CX1 dialer, Google Meet (for demos), Chrome
+**Tools:** Salesforce CRM, CX1 dialer, **Microsoft Teams (for demos)**, Microsoft 365 (Outlook mail + calendar, SharePoint), Slack, Chrome. Google Workspace fully decommissioned 2026-09-04.
 **Product:** SkyTab POS — key selling points: Advantage Program (dual pricing, 99% adoption), Lighthouse software ($20/mo), hardware $29.99/device/mo (waived year one with Advantage)
 
 **Lead pipeline:** ~50-60 fresh leads/month from Boston team + ~7,000 recycled leads in SF
@@ -24,5 +24,5 @@ Bryce Mack is an inside sales rep at Shift4, selling SkyTab POS to restaurants. 
 - Templates - Copy & Paste (Claude).docx — all email/SMS templates
 - Inside Sales Cadence & Templates (Claude).docx — full 10-day cadence
 - Objection Handler (Claude).docx
-- Demo Script - Google Meet (Claude).docx
+- Demo Script - Google Meet (Claude).docx *(filename historical; demos run on Microsoft Teams now)*
 - SkyTab Proposal Template (Claude).docx

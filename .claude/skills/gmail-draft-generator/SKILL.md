@@ -1,16 +1,24 @@
 ---
 name: gmail-draft-generator
-description: Use this skill when Bryce says "generate my email drafts," "create my drafts," "make my email drafts," "draft my emails," "draft the opp target emails," "send drafts to Gmail," "process the email queue," or any variant — including when he asks for outreach emails to specific leads/recycled leads or the converted-opp targets he checked off on the Opp Targets dashboard page. Reads the queued drafts from his Railway dashboard (template queue or the Opp Targets draft queue), creates them in Gmail via MCP, and clears the queue. Also handles ad-hoc bulk email drafting (UW chases, Trending Positively revivals, stale Conversation breakups, recycled lead outreach) following Bryce's style rules.
+description: Use this skill when Bryce says "generate my email drafts," "create my drafts," "make my email drafts," "draft my emails," "draft the opp target emails," "send drafts to Outlook," "process the email queue," or any variant — including when he asks for outreach emails to specific leads/recycled leads or the converted-opp targets he checked off on the Opp Targets dashboard page. Reads the queued drafts from his Railway dashboard (template queue or the Opp Targets draft queue), creates them in Outlook via MCP, and clears the queue. Also handles ad-hoc bulk email drafting (UW chases, Trending Positively revivals, stale Conversation breakups, recycled lead outreach) following Bryce's style rules.
 ---
 
 # Gmail Draft Generator
 
+> **NAME IS HISTORICAL — drafts go to OUTLOOK.** Shift4 is all-Microsoft as of 2026-08-30 (confirmed fully 2026-09-04: email, calendar, Teams, files). Google Workspace is decommissioned.
+>
+> **Use `mcp__75618fea-6128-4002-ab3e-adf2307c8a58__outlook_create_draft`** for new drafts, and **`outlook_create_reply_draft`** when following up on an existing thread so it threads correctly.
+>
+> **NEVER call the Gmail MCP** (`mcp__03fa365f-...__create_draft`). That mailbox is dead; drafts created there are invisible to Bryce.
+>
+> Everywhere below that says "Gmail," read "Outlook." The style rules, queue mechanics, and templates are unchanged.
+
 This skill covers two related jobs:
 
-1. **Queue-driven workflow** — Bryce queues drafts on the dashboard, this skill creates them in Gmail.
-2. **Ad-hoc bulk drafting** — Bryce asks for outreach to a specific cohort (UW chases, breakup emails, recycled revival, etc.), this skill drafts each one with the right tone/format and pushes to Gmail.
+1. **Queue-driven workflow** — Bryce queues drafts on the dashboard, this skill creates them in Outlook.
+2. **Ad-hoc bulk drafting** — Bryce asks for outreach to a specific cohort (UW chases, breakup emails, recycled revival, etc.), this skill drafts each one with the right tone/format and pushes to Outlook.
 
-Both paths share the same style rules and Gmail MCP create_draft mechanics.
+Both paths share the same style rules and `outlook_create_draft` mechanics.
 
 ## Critical Identifiers
 
@@ -18,7 +26,7 @@ Both paths share the same style rules and Gmail MCP create_draft mechanics.
 - **Bryce's User ID (Salesforce):** `005Pd0000084UhFIAU`
 - **Railway URL:** `https://web-production-980e0.up.railway.app`
 - **Railway API key:** `d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d` (header `X-API-Key`)
-- **Gmail MCP tool:** `mcp__03fa365f-dcf7-4dcd-9464-faafb7ebb02b__create_draft`
+- **Draft tool:** `mcp__75618fea-6128-4002-ab3e-adf2307c8a58__outlook_create_draft` (new) / `outlook_create_reply_draft` (thread replies). NOT the Gmail MCP.
 
 ## Bryce's Email Style Rules — ABSOLUTE
 
@@ -33,12 +41,12 @@ These come from his MEMORY.md and apply to **every email this skill drafts**:
    - "US based" not "U.S.-based"
    - **No em dashes or en dashes either.** Use periods, commas, or "to" for ranges.
 
-2. **NEVER include a signature block.** Bryce's Gmail auto-applies his signature. End every email with exactly:
+2. **NEVER include a signature block.** Shift4's server side signature service stamps it on send. End every email with exactly:
    ```
    Thanks,
    Bryce
    ```
-   Do NOT append "Bryce Mack / Solution Specialist II / phone / email" — that block is duplicated by Gmail.
+   Do NOT append "Bryce Mack / Solution Specialist II / phone / email" — the server side service adds it.
 
 3. **Subject lines are short, low-pressure.** No ALL CAPS, no emojis, no aggressive sales language. Examples that work:
    - "Following up"
@@ -123,7 +131,7 @@ When Bryce says "generate my email drafts" or similar:
    No auth needed for read (confirm if 401/403). Returns `{drafts: [...], skipped: [...]}` with `{first_name}`, `{full_name}`, `{company}` tokens already resolved server-side.
 
 2. **For each draft in the response:**
-   Call Gmail MCP `create_draft` with:
+   Call `outlook_create_draft` with:
    ```
    to:      [draft.to]              # array, even for single recipient
    subject: draft.subject
@@ -179,7 +187,7 @@ When Bryce asks for outreach to a cohort like:
 
 5. **Show Bryce 2 to 3 sample drafts BEFORE sending the batch.** Get his OK on the tone, then proceed with the rest.
 
-6. **For each approved draft, call Gmail MCP `create_draft`:**
+6. **For each approved draft, call `outlook_create_draft`:**
    ```
    to:      [recipient_email]
    subject: <subject>
@@ -188,9 +196,9 @@ When Bryce asks for outreach to a cohort like:
 
 7. **Report back:** count created, count skipped (no email on file), any errors.
 
-## Gmail MCP — full tool reference
+## Draft tool reference
 
-The Gmail MCP tool to use is:
+Use the Outlook MCP tool:
 
 ```
 mcp__03fa365f-dcf7-4dcd-9464-faafb7ebb02b__create_draft
@@ -203,7 +211,7 @@ Parameters:
 - `cc` — optional array
 - `bcc` — optional array
 
-Drafts land in Gmail's Drafts folder. Bryce reviews and sends manually — this skill does NOT send.
+Drafts land in Outlook's Drafts folder. Bryce reviews and sends manually — this skill does NOT send.
 
 ## Hard Guardrails
 
@@ -212,7 +220,7 @@ Drafts land in Gmail's Drafts folder. Bryce reviews and sends manually — this 
 3. **NEVER use hyphens, em dashes, or en dashes** in body or subject.
 4. **NEVER include opportunities in queue draft pulls** — opps don't have email on the model (per CLAUDE.md). Only leads and recycled leads.
 5. **NEVER bypass the per-batch sample preview** in ad-hoc drafting. Always show 2 to 3 examples and get OK before mass-creating.
-6. **NEVER modify Salesforce records** as part of this skill (no status changes, no stage updates, no notes). This skill only reads from SF and writes to Gmail.
+6. **NEVER modify Salesforce records** as part of this skill (no status changes, no stage updates, no notes). This skill only reads from SF and writes Outlook drafts.
 
 ## Reporting Format
 
@@ -229,7 +237,7 @@ End every run with:
 Queue cleared: yes/no
 ```
 
-Then list the first 3 to 5 created drafts with subject + recipient so Bryce can spot-check before opening Gmail.
+Then list the first 3 to 5 created drafts with subject + recipient so Bryce can spot-check before opening Outlook.
 
 ## Opp Target Re-engagement (dashboard checkbox queue)
 
@@ -237,7 +245,7 @@ When Bryce says **"draft the opp target emails"** (or similar — these are the 
 
 1. `GET https://web-production-980e0.up.railway.app/api/opp_draft_queue` → returns `{count, leads:[{id, first_name, full_name, company, email, opp_id}]}`.
 2. If empty, tell Bryce nothing is checked on the Opp Targets page.
-3. For each lead, create a Gmail draft with the **locked v1 re-engagement email** below. Normalize first names (title-case; fix junk like "Chef Mike" → "Mike", "Sushi House Mark" → "Mark"); drop the `{company}` phrase if the company value is junk.
+3. For each lead, create an Outlook draft with the **locked v1 re-engagement email** below. Normalize first names (title-case; fix junk like "Chef Mike" → "Mike", "Sushi House Mark" → "Mark"); drop the `{company}` phrase if the company value is junk.
 4. After creating all drafts, `POST .../api/opp_draft_queue/clear` with `{"all": true}`.
 5. Report with the standard format. Do NOT log Salesforce activities here — that happens only when Bryce sends and explicitly asks to log.
 

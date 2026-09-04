@@ -6,9 +6,29 @@ description: Use this skill when Bryce says "refresh commissions", "update my co
 # Commissions Refresh Workflow
 
 The Commissions + Book of Business pages are built on a **MID-keyed model**: a `Deal`
-registry (from Bryce's "Customers" Google Sheet) joined to `CommissionPayout` lines
-(from the commission sheets) on normalized MID. There is **no Google Drive auth** in
-the extraction scripts — Claude is the bridge, same as the Gmail workflow.
+registry (from Bryce's "Customers" sheet) joined to `CommissionPayout` lines
+(from the commission sheets) on normalized MID. There is no sheet auth in
+the extraction scripts — Claude is the bridge.
+
+> ## ⚠️ SOURCE MIGRATION UNRESOLVED (flagged 2026-09-04)
+> Shift4 decommissioned Google Workspace (2026-08-30, confirmed fully 2026-09-04) and is
+> now all-Microsoft. **The Drive MCP steps below may no longer work**, and the commission
+> sheets are owned by claire.cai@shift4.com, not Bryce, so their new home is not knowable
+> from here.
+>
+> **On the next "refresh commissions", FIRST try the Microsoft path, then ask Bryce if it fails:**
+> 1. `sharepoint_search` / `outlook_email_search` for "Digital Marketing" and
+>    "SkyForce Commission History" — Claire may now share them via SharePoint or as
+>    Excel attachments.
+> 2. If the Drive MCP still resolves the old file IDs (Bryce may retain personal Google
+>    access for his own Customers sheet), the legacy path below is still valid.
+> 3. Otherwise **ask Bryce where the sheets live now** and whether the Customers sheet
+>    moved to Excel/SharePoint. Do not guess, and do not partially ingest — the ingest is
+>    delete+replace, so a bad parse wipes good data.
+>
+> The parsers (`scripts/parse_commission_sheets.py`, `scripts/parse_customers_csv.py`) are
+> format-based, not source-based. If you can get the same CSV/text out of SharePoint or an
+> `.xlsx`, they still work unchanged.
 
 ## Steps
 

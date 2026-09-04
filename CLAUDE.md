@@ -3,7 +3,7 @@
 ## Who I'm working with
 **Bryce Mack** — Inside Sales Rep at Shift4, selling SkyTab POS to restaurants.
 - Email: bryce.mack@shift4.com
-- Tools: Salesforce CRM (`crmcredorax.lightning.force.com`), CX1 dialer, Google Meet
+- Tools: Salesforce CRM (`crmcredorax.lightning.force.com`), CX1 dialer, Microsoft Teams (demos/meetings)
 - Product: SkyTab POS — key selling points: Advantage Program (dual pricing, 99% adoption), Lighthouse software ($20/mo), hardware $29.99/device/mo (waived year 1 with Advantage)
 - Lead pipeline: ~50-75 fresh leads/month + ~1,500+ recycled leads
 
@@ -11,34 +11,6 @@
 A Flask web app deployed on **Railway** (`https://web-production-980e0.up.railway.app`) that gives Bryce a prioritized daily call list, KPI tracking, team leaderboard, and recycled lead management — all sourced from Salesforce via SF CLI.
 
 **This is a Railway deployment, not localhost.** Pushing to GitHub (`main` branch) triggers a Railway redeploy.
-
-## Key Files
-
-### Extraction (runs on local Mac)
-- `extract_salesforce.py` — Pulls open leads + opps from SF, scores them, POSTs to Railway
-- `extract_recycled.py` — Pulls recycled leads (Unqualified/Recycled status), categorizes them, POSTs to Railway
-- `scripts/extract_team_metrics.py` — Pulls MTD team leaderboard stats, POSTs to Railway
-- `scripts/morning_briefing.py` — Reads team_metrics.json and sends iMessage briefing to Bryce
-- `run_extraction.sh` — Runs all 4 scripts in sequence; called by cron and desktop shortcut
-
-### Dashboard (Railway Flask app)
-- `dashboard/app.py` — Flask routes, DB models migration on startup, priority scoring logic (`score_record()`)
-- `dashboard/models.py` — SQLAlchemy models (Lead, Opportunity, RecycledLead, TeamMetrics, etc.)
-- `dashboard/templates/dashboard.html` — "Daily Plan" page: prioritized lead + opp call list
-- `dashboard/templates/my_leads.html` — "My Leads" page: full lead and opp tables with sorting
-- `dashboard/templates/recycled.html` — "Recycled" page: 1,500+ recycled leads with search/filter
-- `dashboard/templates/kpis.html` — "KPIs" page: MTD charts, team leaderboard, activity log
-- `dashboard/templates/commissions.html` — "Commissions" page: pay-cycle audit, pending true-ups, cycle history, per-deal drill (MID-keyed)
-- `dashboard/templates/book_of_business.html` — "Book of Business" page: lifetime deal list + contacts, searchable
-- `scripts/parse_commission_sheets.py` — parses commission sheet text into payout ingest rows (see Commissions Refresh Workflow)
-- `scripts/parse_customers_csv.py` — parses the Customers-sheet CSV export into deal ingest rows
-- `dashboard/static/style.css` — Navy/white theme
-- `dashboard/data/` — Local JSON backup files (also used by morning_briefing.py)
-
-### Configuration
-- `requirements.txt` — Python dependencies for Railway
-- `nixpacks.toml` — Railway build config
-- `Procfile` — Railway start command
 
 ## Salesforce Setup
 - **SF CLI alias:** `shift4` (authenticated as bryce.mack@shift4.com)
@@ -64,14 +36,6 @@ The cron uses `bash -l` (login shell) to ensure SF CLI auth is available:
 
 Logs are at `logs/extract.log`.
 
-## Priority Scoring (score_record in app.py)
-Scores leads and opps 1-100 for daily call prioritization:
-- **Activity recency** (max 35): 7-14 days since last contact = prime window
-- **Open task due** (max 30): Overdue = +30, due tomorrow = +20
-- **Status/Stage** (max 25): Working/Qualified leads, Proposal/Demo opps score highest
-- **Call attempts** (max 10): 1-5 attempts is ideal
-- **Positive signals** (max 5): Keywords in notes like "interested", "callback", "demo", "pricing"
-
 ## Railway Deployment
 - **URL:** `https://web-production-980e0.up.railway.app`
 - **Database:** PostgreSQL via SQLAlchemy (Railway managed)
@@ -80,35 +44,33 @@ Scores leads and opps 1-100 for daily call prioritization:
 - **API Key:** `d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d`
 - **DB migrations:** App auto-runs `ALTER TABLE ADD COLUMN IF NOT EXISTS` on startup (no Alembic)
 
-## Gmail Draft Generation Workflow
-Bryce queues email drafts on the dashboard (envelope icon on each lead row → pick template slot 1/2/3). The queue state lives in Railway. Gmail drafts are created by **Claude (this agent) via the Gmail MCP**, not by Railway itself.
+## Microsoft 365 ONLY — Google Workspace is fully decommissioned
+**Shift4 is now an all-Microsoft shop.** The org migrated off Google Workspace on 2026-08-30 and Bryce confirmed on **2026-09-04** that Google is gone entirely: **email, calendar, meetings, and files are all Microsoft now.**
 
-When Bryce says **"generate my email drafts"** (or similar):
-1. `GET https://web-production-980e0.up.railway.app/api/email_drafts_data` — returns `{drafts: [...], skipped: [...]}` with tokens already resolved
-2. For each draft, call the Gmail MCP `create_draft` tool with `to=[draft.to]`, `subject=draft.subject`, `body=draft.body`
-3. After all drafts created, `POST /api/email_queue/clear` with `{"all": true}` to clear the queue
-4. Report: N drafts created, any skipped items, and any MCP errors
+| Need | Use (Microsoft MCP `mcp__75618fea-...`) | NEVER use |
+|---|---|---|
+| Email read | `outlook_email_search` + `read_resource` on the `uri` | Gmail MCP (`search_threads`, `get_thread`) |
+| Email draft | `outlook_create_draft`, `outlook_create_reply_draft` | Gmail `create_draft` / `list_drafts` |
+| Calendar | `outlook_calendar_search` (+ `read_resource` on `calendar:///events/...`) | Google Calendar MCP (`mcp__0c1f58f7-...`) |
+| Create/update events | `outlook_create_event`, `outlook_update_event` | Google Calendar MCP |
+| Meetings | **Microsoft Teams** | Google Meet, Zoom |
+| Files/docs | SharePoint / OneDrive (`sharepoint_search`, `read_resource` on `file:///...`) | Google Drive MCP |
+| Chat | Teams (`teams_list_chats`) + Slack (still in use) | — |
 
-Templates support `{first_name}`, `{full_name}`, `{company}` tokens (resolved server-side).
-Opportunities are excluded (no email field on the Opp model — only leads & recycled leads).
+**The Google Calendar MCP is dead.** Calling it returns a stale calendar and will make you miss real demos. Verified 2026-09-04: `outlook_calendar_search` returned a Hangar Pub demo on 9/9 that the Google calendar did not have.
+
+`outlook_calendar_search` requires a `query` — pass `*` for everything. Its `start`/`end` come back as `{dateTime, timeZone}` wall-clock pairs; present them as-is, do NOT re-interpret `dateTime` as UTC.
+
+- **Read mail** with the Outlook MCP (`mcp__75618fea-...`): `outlook_email_search` (+ `read_resource` on the returned `uri` for full bodies).
+- **Create drafts** with `outlook_create_draft`, or `outlook_create_reply_draft` when following up on an existing thread so it threads correctly.
+- **Never call the Gmail MCP** (`search_threads` / `get_thread` / `create_draft` / `list_drafts`). That mailbox is dead and returns stale, near-empty results — using it silently drops real customer replies and lead assignments.
+- **No signature block in the body.** Shift4 runs a server side signature service that stamps on send. End with "Thanks," / "Bryce".
+
+## Email Draft Generation Workflow
+When Bryce asks to generate email drafts (queued on the dashboard or ad-hoc), use the **`gmail-draft-generator`** skill (`.claude/skills/gmail-draft-generator/`) — it covers the Railway draft queue, draft creation, queue clearing, and Bryce's style rules. **The skill's name is historical only: create drafts in Outlook via `outlook_create_draft`, never Gmail.**
 
 ## Commissions Refresh Workflow
-The Commissions + Book of Business pages are built on a **MID-keyed model**: a `Deal`
-registry (from Bryce's "Customers" Google Sheet) joined to `CommissionPayout` lines
-(from the commission sheets) on normalized MID. There is **no Google Drive auth** in
-the extraction scripts — Claude is the bridge, same as the Gmail workflow.
-
-When Bryce says **"refresh commissions"** (or similar):
-1. Get the sheets:
-   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. NOTE: the Drive MCP truncates this sheet ~row 159, so ask Bryce to export it as CSV (File > Download > CSV) and parse that with `scripts/parse_customers_csv.py` → `parse_customers_csv(path)`. Only the top deal grid; the vendor/prospect/goals scratch below the deals has no MID so it's skipped automatically.
-   - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`), read via Drive MCP. Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
-2. Parse payouts with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Parse deals with `scripts/parse_customers_csv.py`.
-3. POST to Railway `/api/ingest` with `X-API-Key`:
-   - `{"type": "payouts", "payouts": [...]}` — delete+replace all payout lines
-   - `{"type": "deals", "deals": [...]}` — delete+replace the deal registry
-4. Report: payout/deal counts, and any deals with no matching payout (audit candidates) or payout MIDs not in the registry.
-
-Payout types: `upfront` ($250 DM / $400 old SkyForce / $200 Shift4 One), `true_up` (can be a negative clawback), `saas` (SkyTab MIDs only), `adjustment`, `upgrade`. MID normalize = strip leading zeros (`models.normalize_mid`) — the Customers sheet zero-pads to 10, the commission sheets don't. Ingest is delete+replace (the sheets are the source of truth; nothing is hand-entered on these pages).
+When Bryce says "refresh commissions" (or similar), use the **`commissions-refresh`** skill (`.claude/skills/commissions-refresh/`) — it covers the Drive sheets, parsers, and Railway ingest.
 
 ## Salesforce Safety Rules — NON-NEGOTIABLE
 **NEVER perform any of the following, even if it seems helpful:**
@@ -127,6 +89,9 @@ These are production records tied to Bryce's real pipeline and performance metri
 - **Railway = production** — Always push to GitHub to deploy; local changes don't affect what Bryce sees
 - **SF CLI alias** is `shift4` — always use `--target-org shift4`
 
+## Daily / Weekly Activity Recap
+When Bryce asks "what did I do today/this week", use the **`sf-activity-recap`** skill (`.claude/skills/sf-activity-recap/`) — it has the required SOQL sources, layout, and stage-exclusion rules. Always pull live from Salesforce, never from local JSON.
+
 ## Platform Notes
 - **Mac (personal):** `python3` command, cron for scheduling, iMessage briefing via `run_extraction.sh`
 - **Windows (work PC):** `python` command, Task Scheduler for scheduling, use `run_extraction.bat`, iMessage not available (briefing prints to console only)
@@ -137,5 +102,5 @@ These are production records tied to Bryce's real pipeline and performance metri
 - `Templates - Copy & Paste (Claude).docx` — Email/SMS templates
 - `Inside Sales Cadence & Templates (Claude).docx` — Full 10-day cadence
 - `Objection Handler (Claude).docx`
-- `Demo Script - Google Meet (Claude).docx`
+- `Demo Script - Google Meet (Claude).docx` — filename is historical; demos now run on **Microsoft Teams**
 - `SkyTab Proposal Template (Claude).docx`
