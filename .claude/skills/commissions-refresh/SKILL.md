@@ -5,6 +5,12 @@ description: Use this skill when Bryce says "refresh commissions", "update my co
 
 # Commissions Refresh Workflow
 
+> **2026-09-15:** `/commissions` was rebuilt as an inside sales deal tracker (`TrackedDeal`,
+> dashboard is the source of truth, see CLAUDE.md). This skill still owns the **payout
+> sheets → `CommissionPayout`** path, which the tracker joins by MID. The Customers sheet
+> → `Deal` registry now only feeds Book of Business; do not use it to add inside sales
+> deals, Bryce adds those on the page.
+
 The Commissions + Book of Business pages are built on a **MID-keyed model**: a `Deal`
 registry (from Bryce's "Customers" sheet) joined to `CommissionPayout` lines
 (from the commission sheets) on normalized MID. There is no sheet auth in

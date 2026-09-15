@@ -479,6 +479,79 @@ class CommissionPayout(db.Model):
         return d
 
 
+class TrackedDeal(db.Model):
+    """A deal Bryce closed on the inside sales team. The dashboard is the
+    source of truth for these (replaces the Customers spreadsheet from row
+    146 on). Joined to CommissionPayout by normalized MID when a MID exists.
+    Never delete+replace on ingest — upsert only, hand-entered fields must
+    survive."""
+    __tablename__ = 'tracked_deals'
+
+    STATUSES = ['signed', 'onboarding', 'install_scheduled', 'installed',
+                'live', 'stalled', 'cancelled']
+    PRODUCTS = ['Dine', 'Solo', 'Terminal', 'Processing Only', 'Conversion', 'Other']
+    RATE_STRUCTURES = ['Dual Pricing', 'Cash Discount', 'Surcharge', 'Service Fee',
+                       'Flat Rate', 'Interchange Plus', 'Advantage Program', 'Other']
+
+    id             = db.Column(db.Text, primary_key=True)   # uuid4 hex
+    site           = db.Column(db.Text, nullable=False)     # business name
+    sf_opp_id      = db.Column(db.Text)                     # 15/18 char SF id
+    sf_opp_url     = db.Column(db.Text)
+    mid            = db.Column(db.Text, index=True)         # normalized, may be blank pre boarding
+    mid_raw        = db.Column(db.Text)
+    sign_date      = db.Column(db.Text)                     # ISO
+    product        = db.Column(db.Text)                     # PRODUCTS
+    rate_structure = db.Column(db.Text)                     # RATE_STRUCTURES
+    rate_pct       = db.Column(db.Numeric)                  # e.g. 4.0 or 2.75
+    per_item       = db.Column(db.Numeric)                  # e.g. 0.15
+    rate_raw       = db.Column(db.Text)                     # as typed ("2.75% + $.15")
+    mo_volume      = db.Column(db.Numeric)                  # est. monthly card volume
+    terminals      = db.Column(db.Integer, default=0)
+    handhelds      = db.Column(db.Integer, default=0)
+    kds            = db.Column(db.Integer, default=0)
+    other_devices  = db.Column(db.Integer, default=0)
+    saas_monthly   = db.Column(db.Numeric)                  # optional override of devices x rate
+    status         = db.Column(db.Text, default='signed')   # STATUSES
+    install_scheduled_date = db.Column(db.Text)
+    install_date   = db.Column(db.Text)
+    go_live_date   = db.Column(db.Text)
+    stall_reason   = db.Column(db.Text)
+    specialist_name  = db.Column(db.Text)                   # pre launch specialist
+    specialist_email = db.Column(db.Text)
+    contact_name   = db.Column(db.Text)
+    contact_email  = db.Column(db.Text)
+    contact_phone  = db.Column(db.Text)
+    notes          = db.Column(db.Text)
+    source         = db.Column(db.Text, default='manual')   # manual | sheet_import | email_monitor
+    created_at     = db.Column(db.Text)
+    updated_at     = db.Column(db.Text)
+
+    NUMERIC = ('rate_pct', 'per_item', 'mo_volume', 'saas_monthly')
+
+    def to_dict(self):
+        d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        for k in self.NUMERIC:
+            d[k] = float(d[k]) if d[k] is not None else None
+        for k in ('terminals', 'handhelds', 'kds', 'other_devices'):
+            d[k] = int(d[k] or 0)
+        return d
+
+
+class DealEvent(db.Model):
+    """Timeline entry on a TrackedDeal: status changes, notes, email signals."""
+    __tablename__ = 'deal_events'
+
+    id       = db.Column(db.Text, primary_key=True)
+    deal_id  = db.Column(db.Text, index=True, nullable=False)
+    at       = db.Column(db.Text)      # ISO datetime
+    kind     = db.Column(db.Text)      # created | status | field | note | email | payout
+    note     = db.Column(db.Text)
+    source   = db.Column(db.Text)      # manual | email_monitor | sheet_import | system
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+
 class LeadEmailQueue(db.Model):
     """Tracks which leads/opps are queued for email drafting, and which template."""
     __tablename__ = 'lead_email_queue'

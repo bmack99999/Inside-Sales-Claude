@@ -50,7 +50,9 @@ from models import (db, Lead, Opportunity, Callback, KpiLog,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
                     Template, Deal, CommissionPayout, PageView, OppTarget,
-                    normalize_mid)
+                    TrackedDeal, DealEvent, normalize_mid)
+import deal_tracker
+from deal_tracker import parse_iso as _parse_iso, next_payday_for as _next_payday_for
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -553,210 +555,13 @@ def my_leads():
 
 
 # ── Commissions ───────────────────────────────────────────────────────────────
-
-PAY_PERIOD_ANCHOR = date(2026, 5, 15)   # Friday — bi-weekly anchor
-
-def _bi_weekly_fridays(start, end):
-    """Return list of bi-weekly Fridays anchored to PAY_PERIOD_ANCHOR within [start, end]."""
-    diff = (start - PAY_PERIOD_ANCHOR).days
-    weeks = -(-diff // 14) if diff > 0 else diff // 14   # ceil for positive
-    cur = PAY_PERIOD_ANCHOR + timedelta(days=weeks * 14)
-    while cur < start:
-        cur += timedelta(days=14)
-    out = []
-    while cur <= end:
-        out.append(cur)
-        cur += timedelta(days=14)
-    return out
-
-def _last_payday_of_month(d):
-    """Return the last bi-weekly Friday in d.year/d.month (commission payday)."""
-    diff = (d - PAY_PERIOD_ANCHOR).days
-    weeks = diff // 14
-    cur = PAY_PERIOD_ANCHOR + timedelta(days=weeks * 14)
-    # walk forward until we leave the month, then back up one step
-    while cur.month == d.month and cur.year == d.year:
-        nxt = cur + timedelta(days=14)
-        if nxt.month != d.month or nxt.year != d.year:
-            return cur
-        cur = nxt
-    return cur - timedelta(days=14)
-
-def _next_payday_for(paid_iso):
-    """Given an ISO date string when a commission was 'paid' to Bryce in Salesforce
-    terms, return the actual payday Bryce gets the money — last bi-weekly Friday
-    in that month, or if that's already past, the last payday of next month."""
-    if not paid_iso:
-        return None
-    try:
-        d = datetime.strptime(paid_iso, '%Y-%m-%d').date()
-    except (ValueError, TypeError):
-        return None
-    candidate = _last_payday_of_month(d)
-    if candidate < d:
-        # rolled over — push to next month
-        nxt_month_start = (date(d.year + (1 if d.month == 12 else 0),
-                                1 if d.month == 12 else d.month + 1, 1))
-        candidate = _last_payday_of_month(nxt_month_start)
-    return candidate
-
-def _parse_iso(s):
-    if not s:
-        return None
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y'):
-        try:
-            return datetime.strptime(s, fmt).date()
-        except (ValueError, TypeError):
-            continue
-    return None
-
+# Payday math + projection engine live in deal_tracker.py.
 
 # Names used when a payout's MID isn't in the Customers deal registry
 _PAYOUT_TYPE_LABELS = {
     'upfront': 'Upfront', 'true_up': 'True-Up', 'saas': 'SaaS',
     'adjustment': 'Adjustment', 'upgrade': 'Upgrade',
 }
-
-
-def _cycle_label(cycle, date_paid):
-    """Human label for a pay cycle. The cycle code is offset from the actual
-    payday (cycle 20260802 pays 8/28; 20260602 paid 7/2), and a calendar month
-    can hold two paydays — July 2026 had both 20260602 and 20260702 — so the
-    payday leads and the cycle code stays as the secondary identifier."""
-    d = _parse_iso(date_paid)
-    if not d:
-        return cycle or 'Unknown'
-    return '%s %d, %d' % (d.strftime('%b'), d.day, d.year)
-
-
-def _commission_view(payouts, deals):
-    """Build the commission page payload from payout lines joined to deals.
-    payouts/deals are lists of dicts (to_dict output). MID is the join key.
-
-    Every pay cycle is emitted as a self-contained block (tiles, type
-    breakdown, line items) so the page can switch between cycles client-side
-    without another round trip."""
-    today = date.today()
-    deal_by_mid = {d['mid']: d for d in deals if d.get('mid')}
-
-    def deal_name(p):
-        d = deal_by_mid.get(p.get('mid'))
-        if d and d.get('site'):
-            return d['site']
-        return (p.get('dba_name') or '').title() or (p.get('mid') or 'Unknown')
-
-    lifetime = 0.0
-    ytd = 0.0
-    by_cycle = {}
-    for p in payouts:
-        amt = p.get('amount') or 0.0
-        lifetime += amt
-        pd = _parse_iso(p.get('date_paid'))
-        if pd and pd.year == today.year:
-            ytd += amt
-        cyc = p.get('pay_cycle') or (p.get('date_paid') or 'unknown')
-        b = by_cycle.setdefault(cyc, {
-            'cycle': cyc, 'date_paid': p.get('date_paid'),
-            'lines': [], 'total': 0.0,
-            'by_type': {'upfront': 0.0, 'true_up': 0.0, 'saas': 0.0,
-                        'adjustment': 0.0, 'upgrade': 0.0},
-        })
-        b['lines'].append({
-            'mid': p.get('mid'), 'account': deal_name(p),
-            'type': p.get('payout_type'),
-            'type_label': _PAYOUT_TYPE_LABELS.get(p.get('payout_type'), p.get('payout_type')),
-            'amount': round(amt, 2), 'date_paid': p.get('date_paid'),
-            'department': p.get('department'),
-            'in_registry': p.get('mid') in deal_by_mid,
-        })
-        b['total'] += amt
-        if p.get('payout_type') in b['by_type']:
-            b['by_type'][p['payout_type']] += amt
-        if not b['date_paid'] and p.get('date_paid'):
-            b['date_paid'] = p['date_paid']
-
-    for b in by_cycle.values():
-        b['total'] = round(b['total'], 2)
-        b['by_type'] = {k: round(v, 2) for k, v in b['by_type'].items()}
-        # biggest money first, but keep negatives (clawbacks) visible at the end
-        b['lines'].sort(key=lambda x: (x['amount'] < 0, -abs(x['amount'])))
-        b['label'] = _cycle_label(b['cycle'], b['date_paid'])
-        b['merchant_count'] = len({l['mid'] for l in b['lines'] if l['mid']})
-        b['clawback_total'] = round(
-            sum(l['amount'] for l in b['lines'] if l['amount'] < 0), 2)
-
-    cycles = sorted(by_cycle.values(),
-                    key=lambda x: (x['date_paid'] or '', x['cycle']), reverse=True)
-
-    # Cycle-over-cycle delta, computed on the chronological ordering
-    for i, c in enumerate(cycles):
-        prev = cycles[i + 1] if i + 1 < len(cycles) else None
-        c['prev_total'] = prev['total'] if prev else None
-        c['delta'] = (round(c['total'] - prev['total'], 2) if prev else None)
-        c['delta_pct'] = (round((c['total'] - prev['total']) / prev['total'] * 100, 1)
-                          if prev and prev['total'] else None)
-
-    current_cycle = cycles[0] if cycles else None
-    history = cycles[1:] if len(cycles) > 1 else []
-
-    # ── Projected pipeline: deals boarded but not yet trued-up ────────────────
-    # A deal trues up ~2 months after boarding. If an upfront was paid for a MID
-    # but no true_up line exists, the true-up is still outstanding. Split live
-    # from stale so a dead low-volume merchant doesn't read as money coming.
-    paid_types_by_mid = {}
-    upfront_date_by_mid = {}
-    for p in payouts:
-        mid = p.get('mid')
-        paid_types_by_mid.setdefault(mid, set()).add(p.get('payout_type'))
-        if p.get('payout_type') == 'upfront':
-            dp = p.get('date_paid')
-            if dp and (mid not in upfront_date_by_mid or dp > upfront_date_by_mid[mid]):
-                upfront_date_by_mid[mid] = dp
-
-    pipeline = []
-    for mid, types in paid_types_by_mid.items():
-        if not mid:
-            continue
-        if 'upfront' in types and 'true_up' not in types:
-            d = deal_by_mid.get(mid)
-            up_date = upfront_date_by_mid.get(mid)
-            # Age from when the deal actually boarded, not the upfront's
-            # date_paid — that field is the upcoming payday and can be in the
-            # future, which would read as a negative age.
-            anchor = _parse_iso(d.get('sign_date')) if d else None
-            if anchor is None:
-                anchor = _parse_iso(up_date)
-            age = (today - anchor).days if anchor else None
-            pipeline.append({
-                'mid': mid,
-                'account': (d['site'] if d and d.get('site') else mid),
-                'sign_date': (d.get('sign_date') if d else None),
-                'upfront_date': up_date,
-                'age_days': age,
-                # past ~2 cycles with no true-up means volume never materialized
-                'stale': bool(age is not None and age > 90),
-                'in_registry': d is not None,
-            })
-    pipeline.sort(key=lambda x: (x['upfront_date'] or x['sign_date'] or ''), reverse=True)
-    live_pipeline = [p for p in pipeline if not p['stale']]
-    stale_pipeline = [p for p in pipeline if p['stale']]
-
-    kpis = {
-        'lifetime': round(lifetime, 2),
-        'ytd': round(ytd, 2),
-        'current_cycle_total': (current_cycle['total'] if current_cycle else 0.0),
-        'pipeline_count': len(live_pipeline),
-        'stale_count': len(stale_pipeline),
-        'cycle_count': len(cycles),
-    }
-    return {
-        'kpis': kpis,
-        'current_cycle': current_cycle,
-        'cycles': cycles,
-        'history': history,
-        'pipeline': live_pipeline,
-        'stale_pipeline': stale_pipeline,
-    }
 
 
 def _deal_ledger(payouts, deals):
@@ -799,18 +604,230 @@ def _deal_ledger(payouts, deals):
     return ledger
 
 
+ASSUMPTIONS_NOTE_KEY = 'commission_assumptions'
+
+
+def _tracker_view():
+    deals   = [d.to_dict() for d in TrackedDeal.query.all()]
+    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
+    events  = [e.to_dict() for e in DealEvent.query.all()]
+    row = UserNotes.query.get(ASSUMPTIONS_NOTE_KEY)
+    return deal_tracker.build_view(deals, payouts, events, row.content if row else None)
+
+
+def _log_event(deal_id, kind, note, source='manual'):
+    db.session.add(DealEvent(
+        id=uuid.uuid4().hex, deal_id=deal_id, kind=kind, note=note,
+        source=source, at=datetime.now().isoformat(timespec='seconds')))
+
+
+_DEAL_TEXT_FIELDS = ('site', 'sf_opp_id', 'sf_opp_url', 'mid_raw', 'sign_date', 'product',
+                     'rate_structure', 'rate_raw', 'status', 'install_scheduled_date',
+                     'install_date', 'go_live_date', 'stall_reason', 'specialist_name',
+                     'specialist_email', 'contact_name', 'contact_email', 'contact_phone',
+                     'notes', 'source')
+_DEAL_NUM_FIELDS = ('rate_pct', 'per_item', 'mo_volume', 'saas_monthly')
+_DEAL_INT_FIELDS = ('terminals', 'handhelds', 'kds', 'other_devices')
+_DEAL_DATE_FIELDS = ('sign_date', 'install_scheduled_date', 'install_date', 'go_live_date')
+
+
+def _sf_id_from_url(url):
+    if not url:
+        return None
+    m = re.search(r'/lightning/r/(?:Opportunity/)?([A-Za-z0-9]{15,18})', url)
+    if m:
+        return m.group(1)
+    m = re.search(r'\b(006[A-Za-z0-9]{12,15})\b', url)
+    return m.group(1) if m else None
+
+
+def _apply_deal_payload(deal, payload, source='manual'):
+    """Copy allowed fields from a JSON payload onto a TrackedDeal, returning a
+    list of human readable change notes for the timeline."""
+    changes = []
+    def _set(field, val):
+        old = getattr(deal, field)
+        if isinstance(old, (int, float)) or hasattr(old, 'as_tuple'):
+            same = (old is None and val is None) or (old is not None and val is not None and float(old) == float(val))
+        else:
+            same = (old or None) == (val or None)
+        if not same:
+            setattr(deal, field, val)
+            changes.append((field, old, val))
+    for f in _DEAL_TEXT_FIELDS:
+        if f in payload:
+            v = payload[f]
+            v = v.strip() if isinstance(v, str) else v
+            if f in _DEAL_DATE_FIELDS and v:
+                d = _parse_iso(v)
+                v = d.isoformat() if d else v
+            if f == 'status' and v not in TrackedDeal.STATUSES:
+                continue
+            _set(f, v or None)
+    for f in _DEAL_NUM_FIELDS:
+        if f in payload:
+            v = payload[f]
+            try:
+                v = float(str(v).replace('$', '').replace(',', '').replace('%', '')) if v not in (None, '') else None
+            except (ValueError, TypeError):
+                v = None
+            _set(f, v)
+    for f in _DEAL_INT_FIELDS:
+        if f in payload:
+            v = payload[f]
+            try:
+                v = int(float(v)) if v not in (None, '') else 0
+            except (ValueError, TypeError):
+                v = 0
+            _set(f, v)
+    if 'mid_raw' in payload or 'mid' in payload:
+        raw = payload.get('mid_raw') if 'mid_raw' in payload else payload.get('mid')
+        norm = normalize_mid(raw)
+        _set('mid', norm or None)
+        if 'mid' in payload and 'mid_raw' not in payload:
+            _set('mid_raw', (str(raw).strip() or None) if raw is not None else None)
+    if 'sf_opp_url' in payload and not payload.get('sf_opp_id'):
+        sid = _sf_id_from_url(payload.get('sf_opp_url'))
+        if sid:
+            _set('sf_opp_id', sid)
+    if payload.get('rate_raw') and not payload.get('rate_pct'):
+        pct, per, structure = deal_tracker.parse_rate(payload.get('rate_raw'), payload.get('rate_structure'))
+        _set('rate_pct', pct); _set('per_item', per)
+        if not deal.rate_structure:
+            _set('rate_structure', structure)
+    # status side effects: stamp dates when they are implied and missing
+    if deal.status == 'install_scheduled' and not deal.install_scheduled_date and payload.get('install_scheduled_date'):
+        pass
+    deal.updated_at = datetime.now().isoformat(timespec='seconds')
+    return changes
+
+
+def _describe_changes(changes):
+    out = []
+    for field, old, new in changes:
+        label = field.replace('_', ' ')
+        if field == 'status':
+            out.append('Status: %s -> %s' % (deal_tracker.STATUS_LABELS.get(old, old or 'none'),
+                                              deal_tracker.STATUS_LABELS.get(new, new)))
+        elif field in ('notes',):
+            out.append('Notes updated')
+        else:
+            out.append('%s: %s -> %s' % (label, old if old not in (None, '') else 'blank',
+                                         new if new not in (None, '') else 'blank'))
+    return out
+
+
 @app.route('/commissions')
 def commissions():
-    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
-    deals   = [d.to_dict() for d in Deal.query.all()]
-    view    = _commission_view(payouts, deals)
-    ledger  = _deal_ledger(payouts, deals)
-    refreshed_at = max(
-        [p.get('extracted_at') or '' for p in payouts] +
-        [d.get('extracted_at') or '' for d in deals], default='')
-    return render_template('commissions.html',
-                           view=view, ledger=ledger,
-                           refreshed_at=refreshed_at)
+    view = _tracker_view()
+    payouts_refreshed = max([p.extracted_at or '' for p in CommissionPayout.query.all()], default='')
+    return render_template('commissions.html', view=view,
+                           payouts_refreshed=payouts_refreshed)
+
+
+@app.route('/api/tracked_deals')
+def tracked_deals_list():
+    return jsonify(_tracker_view())
+
+
+@app.route('/api/tracked_deals', methods=['POST'])
+def tracked_deals_create():
+    payload = request.get_json(force=True) or {}
+    if not (payload.get('site') or '').strip():
+        return jsonify({'error': 'site is required'}), 400
+    source = payload.get('source') or 'manual'
+    deal = TrackedDeal(id=uuid.uuid4().hex, site=payload['site'].strip(),
+                       created_at=datetime.now().isoformat(timespec='seconds'),
+                       status='signed', source=source)
+    _apply_deal_payload(deal, payload, source)
+    db.session.add(deal)
+    _log_event(deal.id, 'created', 'Deal added', source)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': deal.id, 'view': _tracker_view()})
+
+
+@app.route('/api/tracked_deals/<deal_id>', methods=['POST'])
+def tracked_deals_update(deal_id):
+    deal = TrackedDeal.query.get(deal_id)
+    if not deal:
+        return jsonify({'error': 'not found'}), 404
+    payload = request.get_json(force=True) or {}
+    source = payload.pop('_source', 'manual')
+    event_note = payload.pop('_event_note', None)
+    changes = _apply_deal_payload(deal, payload, source)
+    for line in _describe_changes(changes):
+        _log_event(deal.id, 'status' if line.startswith('Status') else 'field', line, source)
+    if event_note:
+        _log_event(deal.id, 'email' if source == 'email_monitor' else 'note', event_note, source)
+    db.session.commit()
+    return jsonify({'ok': True, 'changed': len(changes), 'view': _tracker_view()})
+
+
+@app.route('/api/tracked_deals/<deal_id>/delete', methods=['POST'])
+def tracked_deals_delete(deal_id):
+    deal = TrackedDeal.query.get(deal_id)
+    if not deal:
+        return jsonify({'error': 'not found'}), 404
+    DealEvent.query.filter_by(deal_id=deal_id).delete(synchronize_session=False)
+    db.session.delete(deal)
+    db.session.commit()
+    return jsonify({'ok': True, 'view': _tracker_view()})
+
+
+@app.route('/api/tracked_deals/<deal_id>/events', methods=['POST'])
+def tracked_deals_add_event(deal_id):
+    deal = TrackedDeal.query.get(deal_id)
+    if not deal:
+        return jsonify({'error': 'not found'}), 404
+    payload = request.get_json(force=True) or {}
+    note = (payload.get('note') or '').strip()
+    if not note:
+        return jsonify({'error': 'note is required'}), 400
+    _log_event(deal.id, payload.get('kind') or 'note', note, payload.get('source') or 'manual')
+    deal.updated_at = datetime.now().isoformat(timespec='seconds')
+    db.session.commit()
+    return jsonify({'ok': True, 'view': _tracker_view()})
+
+
+@app.route('/api/tracked_deals/assumptions', methods=['POST'])
+def tracked_deals_assumptions():
+    payload = request.get_json(force=True) or {}
+    merged = deal_tracker.assumptions_from_json(json.dumps(payload))
+    row = UserNotes.query.get(ASSUMPTIONS_NOTE_KEY)
+    if not row:
+        row = UserNotes(note_key=ASSUMPTIONS_NOTE_KEY, content='')
+        db.session.add(row)
+    row.content = json.dumps(merged)
+    row.updated_at = datetime.now().isoformat()
+    db.session.commit()
+    return jsonify({'ok': True, 'view': _tracker_view()})
+
+
+@app.route('/api/tracked_deals/sf_prefill')
+def tracked_deals_sf_prefill():
+    """Paste a Salesforce opp URL, get back what the dashboard already knows
+    about that opp (ingested Opportunity rows) so the new deal form autofills."""
+    url = (request.args.get('url') or '').strip()
+    sid = _sf_id_from_url(url)
+    if not sid:
+        return jsonify({'error': 'Paste the full Salesforce opportunity URL'}), 400
+    opp = Opportunity.query.get(sid)
+    if not opp:
+        cands = Opportunity.query.filter(Opportunity.id.like(sid[:15] + '%')).all()
+        opp = cands[0] if cands else None
+    existing = TrackedDeal.query.filter(TrackedDeal.sf_opp_id.like(sid[:15] + '%')).first()
+    out = {'sf_opp_id': sid, 'sf_opp_url': url,
+           'already_tracked': existing.id if existing else None}
+    if opp:
+        out.update({
+            'site': opp.account_name or opp.name,
+            'contact_name': opp.contact_name, 'contact_email': opp.email,
+            'contact_phone': opp.phone, 'close_date': opp.close_date,
+            'stage': opp.stage, 'found': True,
+        })
+    else:
+        out['found'] = False
+    return jsonify(out)
 
 
 @app.route('/book-of-business')
@@ -1512,6 +1529,46 @@ def api_ingest():
             ))
         db.session.commit()
         return jsonify({'ok': True, 'deals': len(seen)})
+
+    elif ingest_type == 'tracked_deals':
+        # Inside sales deal tracker — UPSERT only. Match on id, then normalized
+        # MID, then (site, sign_date). Never wipes hand-entered fields: only the
+        # keys present in each item are written.
+        created = updated = 0
+        for item in data.get('tracked_deals', []):
+            deal = None
+            if item.get('id'):
+                deal = TrackedDeal.query.get(item['id'])
+            mid = normalize_mid(item.get('mid') or item.get('mid_raw'))
+            if deal is None and mid:
+                deal = TrackedDeal.query.filter_by(mid=mid).first()
+            if deal is None and item.get('site'):
+                sd = _parse_iso(item.get('sign_date'))
+                q = TrackedDeal.query.filter(db.func.lower(TrackedDeal.site) == item['site'].strip().lower())
+                if sd:
+                    q = q.filter_by(sign_date=sd.isoformat())
+                deal = q.first()
+            src = item.get('source') or 'sheet_import'
+            if deal is None:
+                if not item.get('site'):
+                    continue
+                deal = TrackedDeal(id=uuid.uuid4().hex, site=item['site'].strip(), status='signed',
+                                   created_at=datetime.now().isoformat(timespec='seconds'), source=src)
+                db.session.add(deal)
+                _apply_deal_payload(deal, item, src)
+                _log_event(deal.id, 'created', 'Imported', src)
+                created += 1
+            else:
+                if data.get('fill_blanks_only'):
+                    item = {k: v for k, v in item.items()
+                            if getattr(deal, k, None) in (None, '', 0) and k in TrackedDeal.__table__.columns}
+                changes = _apply_deal_payload(deal, item, src)
+                if changes:
+                    updated += 1
+                    for line in _describe_changes(changes):
+                        _log_event(deal.id, 'field', line, src)
+        db.session.commit()
+        return jsonify({'ok': True, 'created': created, 'updated': updated})
 
     elif ingest_type == 'payouts':
         # Commission payout lines — delete+replace, keyed on deterministic row id.

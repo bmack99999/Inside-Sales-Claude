@@ -69,8 +69,15 @@ Logs are at `logs/extract.log`.
 ## Email Draft Generation Workflow
 When Bryce asks to generate email drafts (queued on the dashboard or ad-hoc), use the **`gmail-draft-generator`** skill (`.claude/skills/gmail-draft-generator/`) — it covers the Railway draft queue, draft creation, queue clearing, and Bryce's style rules. **The skill's name is historical only: create drafts in Outlook via `outlook_create_draft`, never Gmail.**
 
+## Commissions Page = Inside Sales Deal Tracker (rebuilt 2026-09-15)
+`/commissions` is now a deal tracker for every deal Bryce closed on the inside sales team (the old Customers sheet from row 146 on). **The dashboard is the source of truth for these deals, not the spreadsheet.** Bryce adds new deals on the page ("+ New deal", paste the SF opp URL to autofill) with product, rate structure, rate, volume, device counts, contact, and specialist. Real payouts (`CommissionPayout`, still loaded by "refresh commissions") join by MID and drive the Upfront Paid / Trued Up stages automatically; everything before that is a `status` Bryce or the email monitor sets.
+- Models: `TrackedDeal` + `DealEvent` (models.py). Projection math lives in `dashboard/deal_tracker.py` (comp plan: $250 Dine / $200 other upfront at go live, true up = 2 × monthly profit − upfront capped at $3,000, SaaS = devices × $29.99 × 2). Tunable via the Assumptions button (stored in `user_notes` key `commission_assumptions`).
+- API: `GET /api/tracked_deals` (full computed view), `POST /api/tracked_deals` (create), `POST /api/tracked_deals/<id>` (update, accepts `_source` + `_event_note`), `POST /api/tracked_deals/<id>/events`, `POST /api/tracked_deals/<id>/delete`, `GET /api/tracked_deals/sf_prefill?url=`. Ingest type `tracked_deals` is upsert only (match id → MID → site+sign date), never delete+replace.
+- Import: `scripts/import_inside_sales_deals.py` re-reads the Customers xlsx rows 146+ and upserts (safe to rerun; `--fill-blanks-only` never overwrites).
+- **Email monitoring:** when Bryce asks to update deal statuses / check installs, or during the daily briefing's Onboarding to Install section, use the **`deal-status-monitor`** skill (`.claude/skills/deal-status-monitor/`). It maps Outlook signals (Welcome to Shift4 Dine, Kickoff Recap install dates, Not Processing Transactions) onto tracker statuses.
+
 ## Commissions Refresh Workflow
-When Bryce says "refresh commissions" (or similar), use the **`commissions-refresh`** skill (`.claude/skills/commissions-refresh/`) — it covers the Drive sheets, parsers, and Railway ingest.
+When Bryce says "refresh commissions" (or similar), use the **`commissions-refresh`** skill (`.claude/skills/commissions-refresh/`) — it covers the payout sheets, parsers, and Railway ingest. Payouts feed both the Commissions tracker (by MID) and Book of Business.
 
 ## Salesforce Safety Rules — NON-NEGOTIABLE
 **NEVER perform any of the following, even if it seems helpful:**

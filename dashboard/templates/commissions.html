@@ -2,250 +2,87 @@
 {% block title %}Commissions — SkyTab Inside Sales{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="header-left">
-    <h1 class="page-title">Commissions</h1>
-    <div class="header-meta">
-      {% if refreshed_at %}Last sync: {{ refreshed_at }}{% else %}No data yet — say "refresh commissions"{% endif %}
-    </div>
-  </div>
-</div>
+<link rel="stylesheet" href="{{ url_for('static', filename='commissions.css') }}">
 
-{% if view.cycles %}
-<div class="log-table-card cyc-card">
-  <div class="cyc-head">
-    <div class="cyc-head-left">
-      <label for="cycle-select" class="cyc-head-label">Pay cycle</label>
-      <select id="cycle-select">
-        {% for c in view.cycles %}
-        <option value="{{ c.cycle }}">{{ c.label }} &nbsp;·&nbsp; {{ c.cycle }} &nbsp;·&nbsp; ${{ '{:,.2f}'.format(c.total) }}</option>
-        {% endfor %}
-      </select>
-      <span class="cyc-count">{{ view.cycles|length }} cycles on record</span>
-    </div>
-    <div class="cyc-head-right">
-      <button id="cyc-prev" class="cyc-nav" type="button" title="Newer cycle">&lsaquo;</button>
-      <button id="cyc-next" class="cyc-nav" type="button" title="Older cycle">&rsaquo;</button>
-    </div>
-  </div>
-
-  {% for c in view.cycles %}
-  <section class="cyc-pane" data-cycle="{{ c.cycle }}" {% if not loop.first %}hidden{% endif %}>
-    <div class="cyc-hero">
-      <div class="cyc-hero-main">
-        <div class="cyc-hero-label">
-          Paid {{ c.label }}
-          <span class="cyc-code">cycle {{ c.cycle }}</span>
-        </div>
-        <div class="cyc-hero-value">${{ '{:,.2f}'.format(c.total) }}</div>
-        <div class="cyc-hero-sub">
-          {{ c.lines|length }} line{{ '' if c.lines|length == 1 else 's' }} ·
-          {{ c.merchant_count }} merchant{{ '' if c.merchant_count == 1 else 's' }}
-          {% if c.delta is not none %}
-            · <span class="delta {{ 'up' if c.delta >= 0 else 'down' }}">{{ '+' if c.delta >= 0 else '−' }}${{ '{:,.0f}'.format(c.delta|abs) }}{% if c.delta_pct is not none %} ({{ '+' if c.delta_pct >= 0 else '−' }}{{ '{:,.0f}'.format(c.delta_pct|abs) }}%){% endif %} vs prior</span>
-          {% endif %}
-        </div>
-      </div>
-      <div class="cyc-hero-bars">
-        {% set mx = [c.by_type.upfront, c.by_type.true_up, c.by_type.saas, c.by_type.adjustment|abs, c.by_type.upgrade]|max %}
-        {% for key, lbl in [('upfront','Upfront'), ('true_up','True-Up'), ('saas','SaaS'), ('adjustment','Adjustment'), ('upgrade','Upgrade')] %}
-          {% set val = c.by_type[key] %}
-          {% if val %}
-          <div class="cyc-bar-row">
-            <span class="cyc-bar-lbl">{{ lbl }}</span>
-            <span class="cyc-bar-track"><span class="cyc-bar-fill t-{{ key }}{{ ' neg' if val < 0 }}" style="width: {{ ((val|abs / mx * 100) if mx else 0)|round(1) }}%"></span></span>
-            <span class="cyc-bar-val{{ ' neg' if val < 0 }}">{% if val < 0 %}−${{ '{:,.0f}'.format(-val) }}{% else %}${{ '{:,.0f}'.format(val) }}{% endif %}</span>
-          </div>
-          {% endif %}
-        {% endfor %}
+<div class="cx" id="cx-root">
+  <header class="cx-head">
+    <div>
+      <h1 class="page-title">Commissions</h1>
+      <div class="header-meta">
+        Inside sales deals · <span id="cx-meta"></span>
+        {% if payouts_refreshed %} · payouts synced {{ payouts_refreshed[:10] }}{% else %} · no payout sheet loaded yet{% endif %}
       </div>
     </div>
+    <div class="cx-head-actions">
+      <button type="button" class="cx-btn ghost" id="cx-assump-btn">Assumptions</button>
+      <button type="button" class="cx-btn primary" id="cx-new-btn">+ New deal</button>
+    </div>
+  </header>
 
-    <table class="ml-table cyc-lines">
-      <thead>
-        <tr><th>Type</th><th>Account</th><th class="col-mid">MID</th><th class="num">Amount</th></tr>
-      </thead>
-      <tbody>
-        {% for ln in c.lines %}
-        <tr>
-          <td><span class="pill p-{{ ln.type }}">{{ ln.type_label }}</span></td>
-          <td><span class="acct">{{ ln.account }}</span>{% if not ln.in_registry %} <span class="pill p-missing" title="Paid MID with no row in your Customers sheet">not in log</span>{% endif %}</td>
-          <td class="col-mid mono">{{ ln.mid }}</td>
-          <td class="num money{{ ' neg' if ln.amount < 0 }}">{% if ln.amount < 0 %}−${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td colspan="3">Total{% if c.clawback_total %} <span class="foot-note">includes −${{ '{:,.2f}'.format(-c.clawback_total) }} in clawbacks</span>{% endif %}</td>
-          <td class="num money total">${{ '{:,.2f}'.format(c.total) }}</td>
-        </tr>
-      </tfoot>
-    </table>
+  <section class="cx-tiles" id="cx-tiles"></section>
+
+  <section class="cx-card cx-forecast">
+    <div class="cx-card-head">
+      <div>
+        <div class="cx-card-title">Payout forecast</div>
+        <div class="cx-card-sub" id="cx-forecast-sub"></div>
+      </div>
+      <div class="cx-legend">
+        <span class="cx-legend-item"><i class="sw sw-paid"></i>Paid</span>
+        <span class="cx-legend-item"><i class="sw sw-proj"></i>Projected</span>
+      </div>
+    </div>
+    <div class="cx-chart-wrap"><canvas id="cx-chart" height="230" aria-label="Commission paid and projected by month" role="img"></canvas></div>
+    <div id="cx-forecast-detail" class="cx-forecast-detail"></div>
   </section>
-  {% endfor %}
+
+  <section class="cx-card">
+    <div class="cx-toolbar">
+      <div class="cx-chips" id="cx-chips"></div>
+      <div class="cx-toolbar-right">
+        <input type="search" id="cx-search" placeholder="Search name, MID, contact…" autocomplete="off">
+        <select id="cx-sort" aria-label="Sort deals">
+          <option value="signed_desc">Newest signed</option>
+          <option value="signed_asc">Oldest signed</option>
+          <option value="next">Next payout first</option>
+          <option value="remaining">Most projected</option>
+          <option value="paid">Most paid</option>
+          <option value="name">Name A to Z</option>
+        </select>
+      </div>
+    </div>
+    <div class="cx-table-wrap">
+      <table class="cx-table" id="cx-table">
+        <thead>
+          <tr>
+            <th>Deal</th>
+            <th>Stage</th>
+            <th>Signed</th>
+            <th>Rate</th>
+            <th class="num">Devices</th>
+            <th class="num">Paid</th>
+            <th class="num">Projected</th>
+            <th>Next</th>
+          </tr>
+        </thead>
+        <tbody id="cx-tbody"></tbody>
+      </table>
+    </div>
+    <div id="cx-empty" class="cx-empty" hidden></div>
+  </section>
 </div>
 
-<div class="stat-strip">
-  <div class="stat">
-    <div class="stat-label">Paid YTD</div>
-    <div class="stat-value">${{ '{:,.0f}'.format(view.kpis.ytd) }}</div>
-  </div>
-  <div class="stat">
-    <div class="stat-label">Lifetime</div>
-    <div class="stat-value">${{ '{:,.0f}'.format(view.kpis.lifetime) }}</div>
-  </div>
-  <div class="stat">
-    <div class="stat-label">True-ups expected</div>
-    <div class="stat-value">{{ view.kpis.pipeline_count }}</div>
-  </div>
-  <div class="stat{{ ' stat-warn' if view.kpis.stale_count }}">
-    <div class="stat-label">Aging past 90d</div>
-    <div class="stat-value">{{ view.kpis.stale_count }}</div>
-  </div>
-</div>
-{% else %}
-<div class="log-table-card empty-state">
-  No commission payouts loaded yet. Say <strong>"refresh commissions"</strong> to pull the sheets.
-</div>
-{% endif %}
+<div class="cx-scrim" id="cx-scrim" hidden></div>
+<aside class="cx-drawer" id="cx-drawer" hidden aria-modal="true" role="dialog"></aside>
 
-{% if view.pipeline or view.stale_pipeline %}
-<div class="log-table-card sect">
-  <div class="log-table-title">Outstanding True-Ups</div>
-  {% if view.pipeline %}
-  <div class="sub-head">Still in window — upfront paid, true-up expected ({{ view.pipeline|length }})</div>
-  <table class="ml-table">
-    <thead><tr><th>Account</th><th class="col-mid">MID</th><th>Signed</th><th class="num">Age</th></tr></thead>
-    <tbody>
-      {% for p in view.pipeline %}
-      <tr>
-        <td><span class="acct">{{ p.account }}</span>{% if not p.in_registry %} <span class="pill p-missing">not in log</span>{% endif %}</td>
-        <td class="col-mid mono">{{ p.mid }}</td>
-        <td>{{ p.sign_date or '—' }}</td>
-        <td class="num">{% if p.age_days is not none and p.age_days >= 0 %}{{ p.age_days }}d{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-  {% if view.stale_pipeline %}
-  <div class="sub-head warn">Aging past 90 days — low volume, may never true up ({{ view.stale_pipeline|length }})</div>
-  <table class="ml-table">
-    <thead><tr><th>Account</th><th class="col-mid">MID</th><th>Signed</th><th class="num">Age</th></tr></thead>
-    <tbody>
-      {% for p in view.stale_pipeline %}
-      <tr class="row-warn">
-        <td><span class="acct">{{ p.account }}</span></td>
-        <td class="col-mid mono">{{ p.mid }}</td>
-        <td>{{ p.sign_date or '—' }}</td>
-        <td class="num">{{ p.age_days }}d</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</div>
-{% endif %}
+<div class="cx-scrim" id="cx-assump-scrim" hidden></div>
+<div class="cx-modal" id="cx-assump-modal" hidden role="dialog" aria-modal="true"></div>
 
-<div class="log-table-card sect">
-  <div class="log-table-title lookup-head">
-    <span>Deal Lookup <span class="foot-note">across every cycle</span></span>
-    <input type="text" id="deal-search" placeholder="Search restaurant or MID…">
-  </div>
-  <table class="ml-table" id="deal-table">
-    <thead>
-      <tr><th>Account</th><th>Signed</th><th>Type</th><th class="col-mid">MID</th><th class="num">Total Paid</th><th class="num">Payouts</th></tr>
-    </thead>
-    <tbody>
-      {% for l in ledger %}
-      <tr class="deal-row" data-search="{{ (l.site or '')|lower }} {{ l.mid }}">
-        <td><span class="acct">{{ l.site }}</span>{% if not l.in_registry %} <span class="pill p-missing" title="MID paid but not in your Customers sheet">not in log</span>{% endif %}</td>
-        <td>{{ l.sign_date or '—' }}</td>
-        <td>{{ l.deal_type or '—' }}</td>
-        <td class="col-mid mono">{{ l.mid }}</td>
-        <td class="num money{{ ' neg' if l.total_paid < 0 }}">{% if l.total_paid < 0 %}−${{ '{:,.2f}'.format(-l.total_paid) }}{% else %}${{ '{:,.2f}'.format(l.total_paid) }}{% endif %}</td>
-        <td class="num">{% if l.lines %}<button class="drill-btn" type="button" aria-expanded="false">{{ l.payout_count }} <span class="caret">▾</span></button>{% else %}<span class="dash">—</span>{% endif %}</td>
-      </tr>
-      {% if l.lines %}
-      <tr class="drill-row" hidden>
-        <td colspan="6">
-          <table class="drill-inner">
-            {% for ln in l.lines %}
-            <tr>
-              <td class="di-type">{{ ln.type_label }}</td>
-              <td class="di-date">{{ ln.date_paid or '—' }}</td>
-              <td class="di-dept">{{ ln.department or '' }}</td>
-              <td class="num money{{ ' neg' if ln.amount < 0 }}">{% if ln.amount < 0 %}−${{ '{:,.2f}'.format(-ln.amount) }}{% else %}${{ '{:,.2f}'.format(ln.amount) }}{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </table>
-        </td>
-      </tr>
-      {% endif %}
-      {% endfor %}
-    </tbody>
-  </table>
-  <div id="deal-empty" class="empty-state" hidden>No deals match that search.</div>
-</div>
+<div class="cx-toast" id="cx-toast" hidden></div>
+
+<script id="cx-data" type="application/json">{{ view|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
-<script>
-(function () {
-  var sel   = document.getElementById('cycle-select');
-  var panes = Array.prototype.slice.call(document.querySelectorAll('.cyc-pane'));
-  var prev  = document.getElementById('cyc-prev');
-  var next  = document.getElementById('cyc-next');
-
-  if (sel && panes.length) {
-    var show = function (cycle) {
-      panes.forEach(function (p) { p.hidden = (p.dataset.cycle !== cycle); });
-      sel.value = cycle;
-      prev.disabled = (sel.selectedIndex <= 0);
-      next.disabled = (sel.selectedIndex >= sel.options.length - 1);
-    };
-    sel.addEventListener('change', function () { show(sel.value); });
-    prev.addEventListener('click', function () {
-      if (sel.selectedIndex > 0) show(sel.options[sel.selectedIndex - 1].value);
-    });
-    next.addEventListener('click', function () {
-      if (sel.selectedIndex < sel.options.length - 1) show(sel.options[sel.selectedIndex + 1].value);
-    });
-    show(sel.value);
-  }
-
-  document.querySelectorAll('#deal-table .drill-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var drill = btn.closest('tr').nextElementSibling;
-      if (!drill || !drill.classList.contains('drill-row')) return;
-      var open = !drill.hidden;
-      drill.hidden = open;
-      btn.setAttribute('aria-expanded', String(!open));
-      btn.classList.toggle('is-open', !open);
-    });
-  });
-
-  var search = document.getElementById('deal-search');
-  var empty  = document.getElementById('deal-empty');
-  if (search) {
-    search.addEventListener('input', function () {
-      var q = search.value.toLowerCase().trim();
-      var shown = 0;
-      document.querySelectorAll('#deal-table tbody tr.deal-row').forEach(function (tr) {
-        var match = !q || (tr.dataset.search || '').indexOf(q) !== -1;
-        tr.hidden = !match;
-        if (match) shown++;
-        var drill = tr.nextElementSibling;
-        if (drill && drill.classList.contains('drill-row') && !match) {
-          drill.hidden = true;
-          var b = tr.querySelector('.drill-btn');
-          if (b) { b.setAttribute('aria-expanded', 'false'); b.classList.remove('is-open'); }
-        }
-      });
-      if (empty) empty.hidden = (shown !== 0);
-    });
-  }
-})();
-</script>
+<script src="{{ url_for('static', filename='commissions.js') }}"></script>
 {% endblock %}
