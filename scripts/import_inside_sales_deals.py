@@ -28,7 +28,20 @@ sys.path.insert(0, os.path.join(HERE, '..', 'dashboard'))
 from deal_tracker import parse_rate  # noqa: E402
 
 RAILWAY = 'https://web-production-980e0.up.railway.app'
-API_KEY = os.environ.get('INGEST_API_KEY', 'd219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d')
+
+
+def ingest_key():
+    """INGEST_API_KEY from the environment, else from the project .env."""
+    if os.environ.get('INGEST_API_KEY'):
+        return os.environ['INGEST_API_KEY']
+    env_path = os.path.join(HERE, '..', '.env')
+    if os.path.exists(env_path):
+        for line in open(env_path):
+            m = re.match(r'\s*INGEST_API_KEY\s*=\s*["\']?([^"\'\s]+)', line)
+            if m:
+                return m.group(1)
+    sys.exit('INGEST_API_KEY not set and no .env found')
+
 
 PRODUCT_MAP = [
     (re.compile(r'micros|posi|conversion|to skytab|to st\b|to dine', re.I), 'Conversion'),
@@ -157,7 +170,7 @@ def main():
     payload = {'type': 'tracked_deals', 'tracked_deals': items,
                'fill_blanks_only': args.fill_blanks_only}
     r = requests.post(args.url.rstrip('/') + '/api/ingest', json=payload,
-                      headers={'X-API-Key': API_KEY}, timeout=120)
+                      headers={'X-API-Key': ingest_key()}, timeout=120)
     print(r.status_code, r.text[:400])
 
 
