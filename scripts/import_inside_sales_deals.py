@@ -34,12 +34,16 @@ def ingest_key():
     """INGEST_API_KEY from the environment, else from the project .env."""
     if os.environ.get('INGEST_API_KEY'):
         return os.environ['INGEST_API_KEY']
-    env_path = os.path.join(HERE, '..', '.env')
-    if os.path.exists(env_path):
-        for line in open(env_path):
-            m = re.match(r'\s*INGEST_API_KEY\s*=\s*["\']?([^"\'\s]+)', line)
-            if m:
-                return m.group(1)
+    # walk up from the project root so git worktrees find the main checkout's .env
+    d = os.path.abspath(os.path.join(HERE, '..'))
+    for _ in range(6):
+        env_path = os.path.join(d, '.env')
+        if os.path.exists(env_path):
+            for line in open(env_path):
+                m = re.match(r'\s*INGEST_API_KEY\s*=\s*["\']?([^"\'\s]+)', line)
+                if m:
+                    return m.group(1)
+        d = os.path.dirname(d)
     sys.exit('INGEST_API_KEY not set and no .env found')
 
 
