@@ -69,6 +69,9 @@
     var s = view.summary;
     var tiles = [
       { label: 'Paid this year', value: money(s.paid_ytd), sub: money(s.paid_total) + ' lifetime on ' + s.paid_deal_count + ' paid deal' + (s.paid_deal_count === 1 ? '' : 's'), tone: 'good' },
+      { label: 'Avg per settled deal', value: money(s.avg_settled), tone: 'good', filter: 'complete',
+        sub: (s.settled_count || 0) + ' deal' + (s.settled_count === 1 ? '' : 's') + ' fully trued up · best ' + money(s.best_settled) +
+             (s.awaiting_trueup_count ? ' · ' + s.awaiting_trueup_count + ' more awaiting true up' : '') },
       { label: 'Projected next 90 days', value: money(s.projected_90d), sub: money(s.projected_total) + ' still to come · estimates, not confirmed', tone: 'accent', filter: 'inflight' },
       { label: 'Earned but unpaid', value: money(s.overdue_total || 0), sub: (s.overdue_count || 0) + ' deals past their expected payday', tone: (s.overdue_total ? 'bad' : ''), filter: 'overdue' },
       { label: 'Deals tracked', value: s.deals, sub: s.signed_this_month + ' signed this month · ' + s.in_flight + ' in flight', tone: '' },

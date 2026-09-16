@@ -523,6 +523,15 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
     signed_this_month = sum(1 for r in rows if (r.get('sign_date') or '').startswith(month_key))
     paid_deals = [r for r in rows if r['paid']['total']]
     avg_per_paid_deal = round(paid_total / len(paid_deals), 2) if paid_deals else 0.0
+    # "What is a deal actually worth": only deals that reached go live AND have
+    # settled their true up. A deal sitting on just an upfront is still owed its
+    # true up, so averaging it in understates the real number.
+    settled = [r for r in rows if r['stage'] == 'complete' and r['paid']['total']]
+    settled_total = round(sum(r['paid']['total'] for r in settled), 2)
+    avg_settled = round(settled_total / len(settled), 2) if settled else 0.0
+    best = max((r['paid']['total'] for r in settled), default=0.0)
+    awaiting_trueup = [r for r in rows if r['paid']['upfront'] > 0
+                       and not r['paid']['true_up_lines'] and r['stage'] != 'cancelled']
     in_flight = [r for r in rows if r['stage'] not in ('complete', 'cancelled')]
 
     summary = {
@@ -535,6 +544,11 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
         'overdue_count': sum(1 for r in rows if r['overdue']['upfront'] or r['overdue']['true_up']),
         'signed_this_month': signed_this_month,
         'avg_per_paid_deal': avg_per_paid_deal,
+        'avg_settled': avg_settled,
+        'settled_count': len(settled),
+        'settled_total': settled_total,
+        'best_settled': round(best, 2),
+        'awaiting_trueup_count': len(awaiting_trueup),
         'paid_deal_count': len(paid_deals),
         'in_flight': len(in_flight),
         'at_risk': sum(1 for r in rows if r['at_risk']),
