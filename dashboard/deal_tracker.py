@@ -26,7 +26,10 @@ DEFAULT_ASSUMPTIONS = {
     'upfront_dine':        250.0,   # new SkyTab / Shift4 Dine POS MID
     'upfront_other':       200.0,   # terminal, Solo, processing only
     'bonus_cap':          3000.0,   # upfront + true up ceiling
-    'cost_basis_pct':        2.40,  # blended interchange + network cost, % of volume
+    # Calibrated 2026-09-16 against the only three dual pricing deals with both a
+    # known volume and a settled true up (implied 2.73 / 2.82 / 2.16). Revisit as
+    # more deals true up; three is a thin sample.
+    'cost_basis_pct':        2.73,  # blended interchange + network cost, % of volume
     'cost_per_item':         0.10,  # per transaction cost
     'avg_ticket':           35.0,   # used to turn volume into a transaction count
     'saas_per_device':      29.99,  # monthly SaaS per device (terminals, handhelds, KDS, CFD)
@@ -304,6 +307,11 @@ def compute_deal(deal, payout_lines, a, today=None):
     else:
         gross = min(2.0 * profit, a['bonus_cap'])
         true_up_exp = round(gross - upfront_exp, 2)
+        # Don't project a clawback we inferred from a guessed volume. With no
+        # real volume a thin flat rate always lands negative, which reads as a
+        # warning but is really just missing data.
+        if vol_assumed and true_up_exp < 0:
+            true_up_exp = 0.0
     saas_mo = saas_monthly(d, a)
     saas_exp = round(saas_mo * a['saas_months'], 2)
     dev_total = devices_total(d)
@@ -419,6 +427,9 @@ def compute_deal(deal, payout_lines, a, today=None):
         'saas_breakdown': saas_breakdown(d, a),
         'profit_monthly_est': profit,
         'volume_assumed': vol_assumed,
+        'confidence': ('paid' if paid['total'] else
+                       ('estimated' if (d.get('mo_volume') and d.get('rate_pct') is not None)
+                        else 'rough')),
         'expected': {
             'upfront': upfront_exp,
             'true_up': true_up_exp,

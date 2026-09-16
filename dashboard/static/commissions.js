@@ -69,7 +69,7 @@
     var s = view.summary;
     var tiles = [
       { label: 'Paid this year', value: money(s.paid_ytd), sub: money(s.paid_total) + ' lifetime on ' + s.paid_deal_count + ' paid deal' + (s.paid_deal_count === 1 ? '' : 's'), tone: 'good' },
-      { label: 'Projected next 90 days', value: money(s.projected_90d), sub: money(s.projected_total) + ' still to come overall', tone: 'accent', filter: 'inflight' },
+      { label: 'Projected next 90 days', value: money(s.projected_90d), sub: money(s.projected_total) + ' still to come · estimates, not confirmed', tone: 'accent', filter: 'inflight' },
       { label: 'Earned but unpaid', value: money(s.overdue_total || 0), sub: (s.overdue_count || 0) + ' deals past their expected payday', tone: (s.overdue_total ? 'bad' : ''), filter: 'overdue' },
       { label: 'Deals tracked', value: s.deals, sub: s.signed_this_month + ' signed this month · ' + s.in_flight + ' in flight', tone: '' },
       { label: 'Waiting on install', value: s.awaiting_install, sub: s.awaiting_payout + ' installed, waiting on payout', tone: '', filter: 'preinstall' },
@@ -238,7 +238,7 @@
         '<td>' + esc(d.rate_display || '—') + '<div class="cx-sub">' + esc(d.rate_structure || '') + (d.mo_volume ? ' · ' + money(d.mo_volume) + '/mo' : '') + '</div></td>' +
         '<td class="num">' + (d.devices_total ? d.devices_total : '<span class="cx-warn-txt">—</span>') + '<div class="cx-sub">' + esc(devicesText(d)) + '</div></td>' +
         '<td class="num"><span class="' + paidCls + '">' + money(d.paid.total) + '</span>' + (d.paid.total ? '<div class="cx-sub">' + fmtDate(d.paid.last_paid) + '</div>' : '') + '</td>' +
-        '<td class="num"><span class="' + remCls + '">' + money(rem) + '</span>' + (d.volume_assumed && rem ? '<div class="cx-sub">volume assumed</div>' : '') + '</td>' +
+        '<td class="num"><span class="' + remCls + '">' + money(rem) + '</span>' + (rem && d.confidence === 'rough' ? '<div class="cx-sub cx-warn-txt">rough, no volume</div>' : '') + '</td>' +
         '<td>' + nextHTML + '</td>' +
       '</tr>';
     }).join('');
