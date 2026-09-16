@@ -509,6 +509,8 @@ class TrackedDeal(db.Model):
     terminals      = db.Column(db.Integer, default=0)
     handhelds      = db.Column(db.Integer, default=0)
     kds            = db.Column(db.Integer, default=0)
+    cfd            = db.Column(db.Integer, default=0)   # customer facing display
+    kitchen_printers = db.Column(db.Integer, default=0)
     other_devices  = db.Column(db.Integer, default=0)
     saas_monthly   = db.Column(db.Numeric)                  # optional override of devices x rate
     status         = db.Column(db.Text, default='signed')   # STATUSES
@@ -533,7 +535,7 @@ class TrackedDeal(db.Model):
         d = {c.name: getattr(self, c.name) for c in self.__table__.columns}
         for k in self.NUMERIC:
             d[k] = float(d[k]) if d[k] is not None else None
-        for k in ('terminals', 'handhelds', 'kds', 'other_devices'):
+        for k in ('terminals', 'handhelds', 'kds', 'cfd', 'kitchen_printers', 'other_devices'):
             d[k] = int(d[k] or 0)
         return d
 

@@ -29,7 +29,8 @@ DEFAULT_ASSUMPTIONS = {
     'cost_basis_pct':        2.40,  # blended interchange + network cost, % of volume
     'cost_per_item':         0.10,  # per transaction cost
     'avg_ticket':           35.0,   # used to turn volume into a transaction count
-    'saas_per_device':      29.99,  # monthly SaaS per device
+    'saas_per_device':      29.99,  # monthly SaaS per device (terminals, handhelds, KDS, CFD)
+    'saas_per_kitchen_printer': 9.99,
     'saas_months':           2,
     'default_volume':    20000.0,   # used when a deal has no volume entered
     'days_sign_to_install': 30,
@@ -56,6 +57,15 @@ RATE_CODE_MAP = {
 PROGRAM_STRUCTURES = {'Dual Pricing', 'Cash Discount', 'Surcharge',
                       'Service Fee', 'Advantage Program'}
 DINE_PRODUCTS = {'Dine', 'Conversion'}
+
+# Every device on the account bills SaaS at saas_per_device, and Bryce is paid
+# two months of it. Order matters only for display.
+DEVICE_FIELDS = ('terminals', 'handhelds', 'kds', 'cfd', 'kitchen_printers', 'other_devices')
+# Kitchen printers bill at a lower monthly rate than the rest; everything else
+# is charged at saas_per_device.
+DEVICE_SAAS_KEY = {'kitchen_printers': 'saas_per_kitchen_printer'}
+DEVICE_LABELS = {'terminals': 'Terminals', 'handhelds': 'Handhelds', 'kds': 'KDS',
+                 'cfd': 'CFD', 'kitchen_printers': 'Kitchen printers', 'other_devices': 'Other'}
 
 
 # ── dates ────────────────────────────────────────────────────────────────────
@@ -193,13 +203,34 @@ def monthly_profit(deal, a):
 
 
 def devices_total(deal):
-    return sum(int(deal.get(k) or 0) for k in ('terminals', 'handhelds', 'kds', 'other_devices'))
+    return sum(int(deal.get(k) or 0) for k in DEVICE_FIELDS)
 
 
 def saas_monthly(deal, a):
+    """Monthly SaaS across all devices. Kitchen printers bill at their own
+    rate; every other device type bills saas_per_device."""
     if deal.get('saas_monthly'):
         return float(deal['saas_monthly'])
-    return round(devices_total(deal) * a['saas_per_device'], 2)
+    total = 0.0
+    for f in DEVICE_FIELDS:
+        n = int(deal.get(f) or 0)
+        if not n:
+            continue
+        total += n * a[DEVICE_SAAS_KEY.get(f, 'saas_per_device')]
+    return round(total, 2)
+
+
+def saas_breakdown(deal, a):
+    """Per device-type SaaS lines, for showing the math in the UI."""
+    out = []
+    for f in DEVICE_FIELDS:
+        n = int(deal.get(f) or 0)
+        if not n:
+            continue
+        rate = a[DEVICE_SAAS_KEY.get(f, 'saas_per_device')]
+        out.append({'field': f, 'label': DEVICE_LABELS[f], 'count': n,
+                    'rate': rate, 'monthly': round(n * rate, 2)})
+    return out
 
 
 def derive_stage(deal, paid, today=None):
@@ -385,6 +416,7 @@ def compute_deal(deal, payout_lines, a, today=None):
         'status_label': STATUS_LABELS.get(d.get('status') or 'signed'),
         'devices_total': dev_total,
         'saas_monthly_est': saas_mo,
+        'saas_breakdown': saas_breakdown(d, a),
         'profit_monthly_est': profit,
         'volume_assumed': vol_assumed,
         'expected': {

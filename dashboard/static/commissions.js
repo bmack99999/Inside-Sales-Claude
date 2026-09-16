@@ -219,6 +219,8 @@
     if (d.terminals) parts.push(d.terminals + ' term');
     if (d.handhelds) parts.push(d.handhelds + ' hh');
     if (d.kds) parts.push(d.kds + ' kds');
+    if (d.cfd) parts.push(d.cfd + ' cfd');
+    if (d.kitchen_printers) parts.push(d.kitchen_printers + ' kp');
     if (d.other_devices) parts.push(d.other_devices + ' other');
     return parts.join(' · ');
   }
@@ -282,7 +284,7 @@
 
   function drawerHTML(d, mode) {
     var isNew = mode === 'new';
-    d = d || { status: 'signed', product: 'Dine', rate_structure: 'Dual Pricing', terminals: 0, handhelds: 0, kds: 0, other_devices: 0, paid: { total: 0, lines: [], upfront: 0, true_up: 0, saas: 0, true_up_lines: 0, saas_lines: 0 }, expected: {}, remaining: { total: 0 }, dates: {}, risks: [], events: [], stage: 'signed', stage_index: 0, stage_label: 'Signed' };
+    d = d || { status: 'signed', product: 'Dine', rate_structure: 'Dual Pricing', terminals: 0, handhelds: 0, kds: 0, cfd: 0, kitchen_printers: 0, other_devices: 0, saas_breakdown: [], paid: { total: 0, lines: [], upfront: 0, true_up: 0, saas: 0, true_up_lines: 0, saas_lines: 0 }, expected: {}, remaining: { total: 0 }, dates: {}, risks: [], events: [], stage: 'signed', stage_index: 0, stage_label: 'Signed' };
     var o = view.options;
     var sfLink = d.sf_opp_url ? '<a href="' + esc(d.sf_opp_url) + '" target="_blank" rel="noopener">Open in Salesforce ↗</a>' : '';
 
@@ -307,7 +309,7 @@
         '<div class="cx-money-grid">' +
           moneyCard('Upfront', e.upfront, p.upfront, p.upfront > 0 ? 1 : 0, p.upfront > 0 ? ('paid ' + fmtDate(lastLineDate(p.lines, 'upfront'))) : ('est. ' + fmtDate(dt.upfront_pay_est) + (dt.go_live_basis ? ' · from ' + dt.go_live_basis : ''))) +
           moneyCard('True up', e.true_up, p.true_up, p.true_up_lines, trueUpSub) +
-          moneyCard('SaaS ×' + (view.assumptions.saas_months || 2), e.saas, p.saas, p.saas_lines, p.saas_lines ? ('paid ' + fmtDate(lastLineDate(p.lines, 'saas'))) : (d.devices_total ? (d.devices_total + ' devices × ' + money(d.saas_monthly_est, { cents: true }) + '/mo') : 'add device counts')) +
+          moneyCard('SaaS ×' + (view.assumptions.saas_months || 2), e.saas, p.saas, p.saas_lines, p.saas_lines ? ('paid ' + fmtDate(lastLineDate(p.lines, 'saas'))) : (d.devices_total ? (d.devices_total + ' device' + (d.devices_total === 1 ? '' : 's') + ' · ' + money(d.saas_monthly_est, { cents: true }) + '/mo') : 'add device counts')) +
         '</div>' +
         '<div class="cx-total-row"><span>Paid to date</span><b>' + money(p.total, { cents: true }) + '</b></div>' +
         '<div class="cx-total-row"><span>Still projected</span><b>' + money(d.remaining.total, { cents: true }) + '</b></div>' +
@@ -341,14 +343,27 @@
         field('per_item', 'Per transaction', d.per_item, 'number', { prefix: '$', step: '0.01', min: 0 }) +
       '</div></div>';
 
+    var saasRows = (d.saas_breakdown || []).map(function (b) {
+      return '<tr><td>' + b.count + ' × ' + esc(b.label) + '</td><td class="cx-sub">' + money(b.rate, { cents: true }) + '/mo</td><td>' + money(b.monthly, { cents: true }) + '</td></tr>';
+    }).join('');
     var devSec =
-      '<div class="cx-sec"><div class="cx-sec-title">Devices <span class="hint">SaaS pays on device count</span></div><div class="cx-grid-4">' +
+      '<div class="cx-sec"><div class="cx-sec-title">Devices <span class="hint">' +
+        money(view.assumptions.saas_per_device, { cents: true }) + '/mo each, kitchen printers ' +
+        money(view.assumptions.saas_per_kitchen_printer, { cents: true }) + '/mo. You are paid ' +
+        (view.assumptions.saas_months || 2) + ' months.</span></div><div class="cx-grid-3">' +
         field('terminals', 'Terminals', d.terminals, 'number', { min: 0, step: '1' }) +
         field('handhelds', 'Handhelds', d.handhelds, 'number', { min: 0, step: '1' }) +
         field('kds', 'KDS', d.kds, 'number', { min: 0, step: '1' }) +
+        field('cfd', 'CFD', d.cfd, 'number', { min: 0, step: '1' }) +
+        field('kitchen_printers', 'Kitchen printers', d.kitchen_printers, 'number', { min: 0, step: '1' }) +
         field('other_devices', 'Other', d.other_devices, 'number', { min: 0, step: '1' }) +
-      '</div><div class="cx-grid" style="margin-top:10px">' +
-        field('saas_monthly', 'Monthly SaaS override', d.saas_monthly, 'number', { prefix: '$', step: '0.01', min: 0, placeholder: 'blank = devices × ' + money(view.assumptions.saas_per_device, { cents: true }) }) +
+      '</div>' +
+      (saasRows ? '<table class="cx-lines cx-saas">' + saasRows +
+        '<tr class="tot"><td><strong>' + d.devices_total + ' devices</strong></td><td class="cx-sub">monthly SaaS</td><td><strong>' + money(d.saas_monthly_est, { cents: true }) + '</strong></td></tr>' +
+        '<tr class="tot"><td colspan="2" class="cx-sub">Commission at ' + (view.assumptions.saas_months || 2) + ' months</td><td><strong>' + money(d.saas_monthly_est * (view.assumptions.saas_months || 2), { cents: true }) + '</strong></td></tr>' +
+        '</table>' : '') +
+      '<div class="cx-grid" style="margin-top:10px">' +
+        field('saas_monthly', 'Monthly SaaS override', d.saas_monthly, 'number', { prefix: '$', step: '0.01', min: 0, placeholder: 'blank = calculated from devices above' }) +
       '</div></div>';
 
     var peopleSec =
@@ -492,7 +507,9 @@
     ['upfront_dine', 'Upfront: Dine / SkyTab POS', '$'], ['upfront_other', 'Upfront: terminal / Solo / processing', '$'],
     ['bonus_cap', 'Upfront + true up cap', '$'], ['cost_basis_pct', 'Cost basis (interchange + network)', '%'],
     ['cost_per_item', 'Cost per transaction', '$'], ['avg_ticket', 'Average ticket', '$'],
-    ['saas_per_device', 'SaaS per device per month', '$'], ['saas_months', 'SaaS months paid', ''],
+    ['saas_per_device', 'SaaS per device per month', '$'],
+    ['saas_per_kitchen_printer', 'SaaS per kitchen printer per month', '$'],
+    ['saas_months', 'SaaS months paid', ''],
     ['default_volume', 'Volume when none entered', '$'], ['days_sign_to_install', 'Days sign → install', 'd'],
     ['days_install_to_live', 'Days install → go live', 'd'], ['stall_after_days', 'Flag as at risk after (days)', 'd'],
   ];
