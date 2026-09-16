@@ -533,6 +533,14 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
     awaiting_trueup = [r for r in rows if r['paid']['upfront'] > 0
                        and not r['paid']['true_up_lines'] and r['stage'] != 'cancelled']
     in_flight = [r for r in rows if r['stage'] not in ('complete', 'cancelled')]
+    # Fall-off rate: cancelled as a share of deals that actually reached a
+    # verdict. Deals still working their way to install are excluded from the
+    # denominator, otherwise the rate reads artificially low.
+    cancelled = [r for r in rows if r['stage'] == 'cancelled']
+    reached_verdict = [r for r in rows if r['stage'] == 'cancelled' or r['paid']['total']
+                       or r['stage'] in ('live', 'complete', 'upfront_paid')]
+    cancel_rate = (round(len(cancelled) / len(reached_verdict) * 100, 1)
+                   if reached_verdict else 0.0)
 
     summary = {
         'deals': len(rows),
@@ -553,6 +561,9 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
         'in_flight': len(in_flight),
         'at_risk': sum(1 for r in rows if r['at_risk']),
         'stalled': stage_counts.get('stalled', 0),
+        'cancelled_count': len(cancelled),
+        'cancel_rate': cancel_rate,
+        'verdict_count': len(reached_verdict),
         'awaiting_install': sum(1 for r in rows if r['stage'] in ('signed', 'onboarding', 'install_scheduled')),
         'awaiting_payout': sum(1 for r in rows if r['stage'] in ('installed', 'live', 'upfront_paid')),
         'stage_counts': stage_counts,

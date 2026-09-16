@@ -76,6 +76,8 @@
       { label: 'Earned but unpaid', value: money(s.overdue_total || 0), sub: (s.overdue_count || 0) + ' deals past their expected payday', tone: (s.overdue_total ? 'bad' : ''), filter: 'overdue' },
       { label: 'Deals tracked', value: s.deals, sub: s.signed_this_month + ' signed this month · ' + s.in_flight + ' in flight', tone: '' },
       { label: 'Waiting on install', value: s.awaiting_install, sub: s.awaiting_payout + ' installed, waiting on payout', tone: '', filter: 'preinstall' },
+      { label: 'Cancelled', value: s.cancelled_count || 0, tone: (s.cancelled_count ? 'bad' : ''), filter: 'cancelled',
+        sub: (s.cancel_rate || 0) + '% of the ' + (s.verdict_count || 0) + ' deals that reached a verdict' },
       { label: 'Needs attention', value: s.at_risk, sub: s.stalled + ' stalled · ' + s.missing_mid + ' missing MID · ' + s.missing_devices + ' missing devices', tone: s.at_risk ? 'warn' : '', filter: 'risk' },
     ];
     $('cx-tiles').innerHTML = tiles.map(function (t) {
