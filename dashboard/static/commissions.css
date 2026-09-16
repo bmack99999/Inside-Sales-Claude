@@ -180,6 +180,11 @@
 .cx-grid-4 { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
 .cx-grid-3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
 .cx-saas { margin-top:12px; }
+.cx-od-group { margin-bottom:14px; }
+.cx-od-due { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--cx-ink-3); padding-bottom:2px; border-bottom:1px solid var(--cx-line); }
+.cx-od-due .cx-sub { text-transform:none; letter-spacing:0; font-weight:600; margin-left:6px; }
+.cx-od-group .cx-lines td { padding:6px 4px; }
+.cx-od-group .cx-lines td.num { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
 .cx-saas td { padding:5px 4px; }
 .cx-saas td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
 .cx-saas tr.tot td { border-top:1px solid var(--cx-line); }

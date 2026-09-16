@@ -113,7 +113,7 @@
     var accent = '#2a78d6';
     var ctx = $('cx-chart').getContext('2d');
     var total90 = view.summary.projected_90d;
-    $('cx-forecast-sub').textContent = 'Actual payouts for the last 3 months and where the remaining ' + money(view.summary.projected_total) + ' should land. Click a month for the breakdown.';
+    $('cx-forecast-sub').textContent = 'Paid the last 3 months, projected after that. Click a bar for that month\u2019s deals.';
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
       type: 'bar',
@@ -157,14 +157,7 @@
   }
   function renderForecastDetail() {
     var el = $('cx-forecast-detail');
-    if (!state.month) {
-      var od = view.forecast.overdue || [];
-      if (!od.length) { el.innerHTML = ''; return; }
-      el.innerHTML = '<div class="fd-head">Earned but unpaid: ' + money(view.forecast.overdue_total) +
-        ' across ' + od.length + ' line' + (od.length === 1 ? '' : 's') + '. Expected payday has passed with no payout on the sheets.</div>' +
-        od.map(function (i) { return '<span><strong>' + esc(i.site) + '</strong> ' + esc(i.what) + ' ' + money(i.amount) + ' <span class="cx-sub">due ' + fmtDate(i.due, true) + '</span></span>'; }).join('');
-      return;
-    }
+    if (!state.month) { el.innerHTML = ''; return; }
     var det = view.forecast.detail[state.month] || [];
     var i = view.forecast.months.indexOf(state.month);
     var paid = view.forecast.paid[i], proj = view.forecast.projected[i];
@@ -531,7 +524,44 @@
   }
 
   // ── wiring ───────────────────────────────────────────────────────────────
-  $('cx-tiles').addEventListener('click', function (e) { var t = e.target.closest('.cx-tile[data-filter]'); if (!t) return; state.filter = t.dataset.filter; renderChips(); renderTable(); $('cx-table').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('cx-tiles').addEventListener('click', function (e) {
+    var t = e.target.closest('.cx-tile[data-filter]');
+    if (!t) return;
+    if (t.dataset.filter === 'overdue') { openOverdue(); return; }
+    state.filter = t.dataset.filter; renderChips(); renderTable();
+    $('cx-table').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Earned but unpaid: a reviewable list, in a modal rather than dumped on the page.
+  function openOverdue() {
+    var od = view.forecast.overdue || [];
+    var groups = {};
+    od.forEach(function (i) { (groups[i.due] = groups[i.due] || []).push(i); });
+    var dues = Object.keys(groups).sort();
+    var body = dues.map(function (due) {
+      var rows = groups[due].sort(function (a, b) { return b.amount - a.amount; }).map(function (i) {
+        return '<tr><td>' + esc(i.site) + '</td><td class="cx-sub">' + esc(i.what) + '</td><td class="num">' + money(i.amount, { cents: true }) + '</td></tr>';
+      }).join('');
+      var sub = groups[due].reduce(function (a, i) { return a + i.amount; }, 0);
+      return '<div class="cx-od-group"><div class="cx-od-due">Expected ' + fmtDate(due, true) +
+        ' <span class="cx-sub">' + groups[due].length + ' line' + (groups[due].length === 1 ? '' : 's') + ' · ' + money(sub) + '</span></div>' +
+        '<table class="cx-lines">' + rows + '</table></div>';
+    }).join('');
+    $('cx-assump-modal').innerHTML =
+      '<div class="cx-dr-head"><div><div class="cx-dr-title">Earned but unpaid · ' + money(view.forecast.overdue_total) + '</div>' +
+      '<div class="cx-dr-sub">' + od.length + ' lines whose expected payday has passed with no payout on the commission sheets. Estimates, not confirmed amounts.</div></div>' +
+      '<button type="button" class="cx-dr-close" id="od-close">×</button></div>' +
+      '<div class="cx-dr-body">' + (body || '<div class="cx-help">Nothing outstanding.</div>') + '</div>' +
+      '<div class="cx-dr-foot"><div></div><div class="right"><button type="button" class="cx-btn ghost" id="od-filter">Show these deals in the list</button>' +
+      '<button type="button" class="cx-btn primary" id="od-done">Close</button></div></div>';
+    $('cx-assump-modal').hidden = false; $('cx-assump-scrim').hidden = false;
+    var close = function () { $('cx-assump-modal').hidden = true; $('cx-assump-scrim').hidden = true; };
+    $('od-close').onclick = close; $('od-done').onclick = close; $('cx-assump-scrim').onclick = close;
+    $('od-filter').onclick = function () {
+      close(); state.filter = 'overdue'; renderChips(); renderTable();
+      $('cx-table').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  }
   $('cx-chips').addEventListener('click', function (e) { var b = e.target.closest('.cx-chip'); if (!b) return; state.filter = b.dataset.filter; renderChips(); renderTable(); });
   $('cx-search').addEventListener('input', function (e) { state.q = e.target.value; renderTable(); });
   $('cx-sort').addEventListener('change', function (e) { state.sort = e.target.value; renderTable(); });
