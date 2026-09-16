@@ -515,6 +515,7 @@ class TrackedDeal(db.Model):
     install_scheduled_date = db.Column(db.Text)
     install_date   = db.Column(db.Text)
     go_live_date   = db.Column(db.Text)
+    sf_start_processing_date = db.Column(db.Text)   # Opportunity.Start_Processing_Date__c
     stall_reason   = db.Column(db.Text)
     specialist_name  = db.Column(db.Text)                   # pre launch specialist
     specialist_email = db.Column(db.Text)

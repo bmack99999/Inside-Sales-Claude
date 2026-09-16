@@ -70,6 +70,7 @@
     var tiles = [
       { label: 'Paid this year', value: money(s.paid_ytd), sub: money(s.paid_total) + ' lifetime on ' + s.paid_deal_count + ' paid deal' + (s.paid_deal_count === 1 ? '' : 's'), tone: 'good' },
       { label: 'Projected next 90 days', value: money(s.projected_90d), sub: money(s.projected_total) + ' still to come overall', tone: 'accent', filter: 'inflight' },
+      { label: 'Earned but unpaid', value: money(s.overdue_total || 0), sub: (s.overdue_count || 0) + ' deals past their expected payday', tone: (s.overdue_total ? 'bad' : ''), filter: 'overdue' },
       { label: 'Deals tracked', value: s.deals, sub: s.signed_this_month + ' signed this month · ' + s.in_flight + ' in flight', tone: '' },
       { label: 'Waiting on install', value: s.awaiting_install, sub: s.awaiting_payout + ' installed, waiting on payout', tone: '', filter: 'preinstall' },
       { label: 'Needs attention', value: s.at_risk, sub: s.stalled + ' stalled · ' + s.missing_mid + ' missing MID · ' + s.missing_devices + ' missing devices', tone: s.at_risk ? 'warn' : '', filter: 'risk' },
@@ -156,7 +157,14 @@
   }
   function renderForecastDetail() {
     var el = $('cx-forecast-detail');
-    if (!state.month) { el.innerHTML = ''; return; }
+    if (!state.month) {
+      var od = view.forecast.overdue || [];
+      if (!od.length) { el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="fd-head">Earned but unpaid: ' + money(view.forecast.overdue_total) +
+        ' across ' + od.length + ' line' + (od.length === 1 ? '' : 's') + '. Expected payday has passed with no payout on the sheets.</div>' +
+        od.map(function (i) { return '<span><strong>' + esc(i.site) + '</strong> ' + esc(i.what) + ' ' + money(i.amount) + ' <span class="cx-sub">due ' + fmtDate(i.due, true) + '</span></span>'; }).join('');
+      return;
+    }
     var det = view.forecast.detail[state.month] || [];
     var i = view.forecast.months.indexOf(state.month);
     var paid = view.forecast.paid[i], proj = view.forecast.projected[i];
@@ -175,6 +183,7 @@
     { key: 'complete', label: 'Trued up', test: function (d) { return d.stage === 'complete'; } },
     { key: 'stalled', label: 'Stalled', test: function (d) { return d.stage === 'stalled'; } },
     { key: 'risk', label: 'Needs attention', risk: true, test: function (d) { return d.at_risk; } },
+    { key: 'overdue', label: 'Earned but unpaid', risk: true, test: function (d) { return d.overdue && (d.overdue.upfront || d.overdue.true_up); } },
     { key: 'missing', label: 'Missing info', test: function (d) { return d.stage !== 'cancelled' && (!d.mid || !d.devices_total || !d.mo_volume); } },
     { key: 'cancelled', label: 'Cancelled', test: function (d) { return d.stage === 'cancelled'; } },
   ];
@@ -317,6 +326,7 @@
         field('install_scheduled_date', 'Install scheduled', d.install_scheduled_date, 'date') +
         field('install_date', 'Installed', d.install_date, 'date') +
         field('go_live_date', 'Go live (status 700)', d.go_live_date, 'date') +
+        field('sf_start_processing_date', 'SF start processing', d.sf_start_processing_date, 'date') +
         field('stall_reason', 'Stall reason', d.stall_reason, 'text', { placeholder: 'e.g. waiting on internet, owner unresponsive', hidden: d.status !== 'stalled' && d.status !== 'cancelled' }) +
       '</div></div>';
 

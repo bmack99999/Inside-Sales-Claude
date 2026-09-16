@@ -202,7 +202,7 @@ def saas_monthly(deal, a):
     return round(devices_total(deal) * a['saas_per_device'], 2)
 
 
-def derive_stage(deal, paid):
+def derive_stage(deal, paid, today=None):
     status = deal.get('status') or 'signed'
     if status == 'cancelled':
         return 'cancelled'
@@ -213,6 +213,9 @@ def derive_stage(deal, paid):
     if paid['upfront'] > 0:
         return 'upfront_paid'
     if status == 'live' or deal.get('go_live_date'):
+        return 'live'
+    sfp = parse_iso(deal.get('sf_start_processing_date'))
+    if sfp and sfp <= (today or date.today()):
         return 'live'
     if status == 'installed' or deal.get('install_date'):
         return 'installed'
@@ -258,7 +261,7 @@ def compute_deal(deal, payout_lines, a, today=None):
     today = today or date.today()
     d = dict(deal)
     paid = summarize_payouts(payout_lines)
-    stage = derive_stage(d, paid)
+    stage = derive_stage(d, paid, today)
     sign = parse_iso(d.get('sign_date'))
     d['days_since_sign'] = (today - sign).days if sign else None
 
@@ -278,10 +281,16 @@ def compute_deal(deal, payout_lines, a, today=None):
     go_live = parse_iso(d.get('go_live_date'))
     install = parse_iso(d.get('install_date'))
     sched = parse_iso(d.get('install_scheduled_date'))
+    # Salesforce Start_Processing_Date__c: authoritative. In the past it means
+    # the MID is live; in the future it is the scheduled/expected go live.
+    sf_proc = parse_iso(d.get('sf_start_processing_date'))
     go_live_est = None
     go_live_basis = None
     if go_live:
         go_live_est, go_live_basis = go_live, 'go live date'
+    elif sf_proc:
+        go_live_est, go_live_basis = sf_proc, ('Salesforce start processing'
+                                               if sf_proc <= today else 'Salesforce scheduled processing')
     elif install:
         go_live_est, go_live_basis = install + timedelta(days=a['days_install_to_live']), 'install date'
     elif sched:
@@ -307,12 +316,14 @@ def compute_deal(deal, payout_lines, a, today=None):
 
     terminal = stage in ('cancelled',)
     frozen = stage in ('stalled',)
-    # Signed/onboarding with nothing scheduled after the stall window: treat
-    # as stalled for forecasting until Bryce updates the status. Keeps dead
-    # April deals from inflating next month's projection.
-    stale = (stage in ('signed', 'onboarding') and d['days_since_sign'] is not None
-             and d['days_since_sign'] > a['stall_after_days']
-             and not (sched and sched >= today))
+    # A deal only drops out of the forecast when there is no forward signal at
+    # all: no Salesforce start-processing date, no install date or scheduled
+    # install, and it has been sitting past the stall window. Commission is
+    # driven by the install date, so once we have one the money is forecastable.
+    has_signal = bool(sf_proc or install or go_live or (sched and sched >= today))
+    stale = (stage in ('signed', 'onboarding') and not has_signal
+             and d['days_since_sign'] is not None
+             and d['days_since_sign'] > a['stall_after_days'])
 
     remaining = {'upfront': 0.0, 'true_up': 0.0, 'saas': 0.0, 'total': 0.0}
     if not terminal:
@@ -324,20 +335,26 @@ def compute_deal(deal, payout_lines, a, today=None):
             remaining['saas'] = saas_exp
     remaining['total'] = round(sum(remaining.values()), 2)
 
-    upfront_pay_est = _payday_not_before(upfront_pay_est, today) if remaining['upfront'] else upfront_pay_est
-    true_up_pay_est = _payday_not_before(true_up_pay_est, today) if (remaining['true_up'] or remaining['saas']) else true_up_pay_est
+    # Do NOT push an overdue estimate forward to the next payday: that stacks
+    # months of unpaid items onto one cycle and overstates it. Keep the date the
+    # comp plan implies and surface it as overdue instead.
+    upfront_overdue = bool(remaining['upfront'] and upfront_pay_est and upfront_pay_est < today)
+    true_up_overdue = bool((remaining['true_up'] or remaining['saas'])
+                           and true_up_pay_est and true_up_pay_est < today)
 
     # ── risk flags ──
     risks = []
     dss = d['days_since_sign']
     if stale:
-        risks.append('No install scheduled %d days after signing, left out of the forecast' % dss)
+        risks.append('No install date or Salesforce processing date %d days after signing, left out of the forecast' % dss)
     if stage == 'install_scheduled' and sched and sched < today - timedelta(days=3):
         risks.append('Scheduled install date passed without an install')
     if stage in ('installed', 'live') and go_live_est and (today - go_live_est).days > 45:
         risks.append('No upfront paid %d days after go live' % (today - go_live_est).days)
-    if stage == 'upfront_paid' and true_up_pay_est and true_up_pay_est < today - timedelta(days=14):
-        risks.append('True up overdue')
+    if upfront_overdue:
+        risks.append('Upfront looks overdue, expected around %s' % upfront_pay_est.isoformat())
+    if true_up_overdue and (today - true_up_pay_est).days > 14:
+        risks.append('True up overdue, expected around %s' % true_up_pay_est.isoformat())
     if paid['clawback'] < 0:
         risks.append('Clawback on record')
     if stage == 'stalled' and d.get('stall_reason'):
@@ -386,6 +403,7 @@ def compute_deal(deal, payout_lines, a, today=None):
             'upfront_pay_est': upfront_pay_est.isoformat() if upfront_pay_est else None,
             'true_up_pay_est': true_up_pay_est.isoformat() if true_up_pay_est else None,
         },
+        'overdue': {'upfront': upfront_overdue, 'true_up': true_up_overdue},
         'risks': risks,
         'at_risk': bool(risks) and stage not in ('complete', 'cancelled'),
         'next_event': next_event,
@@ -438,15 +456,23 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
     projected_total = round(sum(r['remaining']['total'] for r in rows if r['forecast_counts']), 2)
     horizon = today + timedelta(days=90)
     proj_90 = 0.0
+    overdue_total = 0.0
     for r in rows:
         if not r['forecast_counts']:
             continue
         up = parse_iso(r['dates']['upfront_pay_est'])
         tu = parse_iso(r['dates']['true_up_pay_est'])
-        if r['remaining']['upfront'] and up and up <= horizon:
-            proj_90 += r['remaining']['upfront']
-        if (r['remaining']['true_up'] or r['remaining']['saas']) and tu and tu <= horizon:
-            proj_90 += r['remaining']['true_up'] + r['remaining']['saas']
+        if r['remaining']['upfront'] and up:
+            if r['overdue']['upfront']:
+                overdue_total += r['remaining']['upfront']
+            elif up <= horizon:
+                proj_90 += r['remaining']['upfront']
+        tail = r['remaining']['true_up'] + r['remaining']['saas']
+        if tail and tu:
+            if r['overdue']['true_up']:
+                overdue_total += tail
+            elif tu <= horizon:
+                proj_90 += tail
     stage_counts = {}
     for r in rows:
         stage_counts[r['stage']] = stage_counts.get(r['stage'], 0) + 1
@@ -462,6 +488,8 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
         'paid_ytd': paid_ytd,
         'projected_total': projected_total,
         'projected_90d': round(proj_90, 2),
+        'overdue_total': round(overdue_total, 2),
+        'overdue_count': sum(1 for r in rows if r['overdue']['upfront'] or r['overdue']['true_up']),
         'signed_this_month': signed_this_month,
         'avg_per_paid_deal': avg_per_paid_deal,
         'paid_deal_count': len(paid_deals),
@@ -481,6 +509,7 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
     paid_by_m = {m: 0.0 for m in months}
     proj_by_m = {m: 0.0 for m in months}
     proj_detail = {m: [] for m in months}
+    overdue_items = []
     for r in rows:
         for l in r['paid']['lines']:
             k = (l['date_paid'] or '')[:7]
@@ -490,14 +519,27 @@ def build_view(deals, payouts, events, assumptions_raw=None, today=None):
             continue
         up = r['dates']['upfront_pay_est']
         tu = r['dates']['true_up_pay_est']
-        if r['remaining']['upfront'] and up and up[:7] in proj_by_m:
-            proj_by_m[up[:7]] += r['remaining']['upfront']
-            proj_detail[up[:7]].append({'site': r['site'], 'what': 'Upfront', 'amount': r['remaining']['upfront']})
+        if r['remaining']['upfront'] and up:
+            item = {'site': r['site'], 'what': 'Upfront', 'amount': r['remaining']['upfront'],
+                    'due': up, 'mid': r.get('mid')}
+            if r['overdue']['upfront']:
+                overdue_items.append(item)
+            elif up[:7] in proj_by_m:
+                proj_by_m[up[:7]] += r['remaining']['upfront']
+                proj_detail[up[:7]].append(item)
         tail = r['remaining']['true_up'] + r['remaining']['saas']
-        if tail and tu and tu[:7] in proj_by_m:
-            proj_by_m[tu[:7]] += tail
-            proj_detail[tu[:7]].append({'site': r['site'], 'what': 'True up + SaaS', 'amount': round(tail, 2)})
+        if tail and tu:
+            item = {'site': r['site'], 'what': 'True up + SaaS', 'amount': round(tail, 2),
+                    'due': tu, 'mid': r.get('mid')}
+            if r['overdue']['true_up']:
+                overdue_items.append(item)
+            elif tu[:7] in proj_by_m:
+                proj_by_m[tu[:7]] += tail
+                proj_detail[tu[:7]].append(item)
+    overdue_items.sort(key=lambda x: (x['due'] or '', -x['amount']))
     forecast = {
+        'overdue': overdue_items,
+        'overdue_total': round(sum(i['amount'] for i in overdue_items), 2),
         'months': months,
         'paid': [round(paid_by_m[m], 2) for m in months],
         'projected': [round(proj_by_m[m], 2) for m in months],

@@ -88,6 +88,7 @@ with app.app_context():
         ("team_metrics",   "monthly_snapshots", "TEXT"),
         ("team_metrics",   "mix_adjusted",      "TEXT"),
         ("opp_targets",    "opp_created",       "TEXT"),
+        ("tracked_deals",  "sf_start_processing_date", "TEXT"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
@@ -623,12 +624,14 @@ def _log_event(deal_id, kind, note, source='manual'):
 
 _DEAL_TEXT_FIELDS = ('site', 'sf_opp_id', 'sf_opp_url', 'mid_raw', 'sign_date', 'product',
                      'rate_structure', 'rate_raw', 'status', 'install_scheduled_date',
-                     'install_date', 'go_live_date', 'stall_reason', 'specialist_name',
+                     'install_date', 'go_live_date', 'sf_start_processing_date',
+                     'stall_reason', 'specialist_name',
                      'specialist_email', 'contact_name', 'contact_email', 'contact_phone',
                      'notes', 'source')
 _DEAL_NUM_FIELDS = ('rate_pct', 'per_item', 'mo_volume', 'saas_monthly')
 _DEAL_INT_FIELDS = ('terminals', 'handhelds', 'kds', 'other_devices')
-_DEAL_DATE_FIELDS = ('sign_date', 'install_scheduled_date', 'install_date', 'go_live_date')
+_DEAL_DATE_FIELDS = ('sign_date', 'install_scheduled_date', 'install_date', 'go_live_date',
+                     'sf_start_processing_date')
 
 
 def _sf_id_from_url(url):
