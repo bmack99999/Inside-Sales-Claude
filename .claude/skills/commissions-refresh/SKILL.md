@@ -16,36 +16,58 @@ registry (from Bryce's "Customers" sheet) joined to `CommissionPayout` lines
 (from the commission sheets) on normalized MID. There is no sheet auth in
 the extraction scripts — Claude is the bridge.
 
-> ## ⚠️ SOURCE MIGRATION UNRESOLVED (flagged 2026-09-04)
-> Shift4 decommissioned Google Workspace (2026-08-30, confirmed fully 2026-09-04) and is
-> now all-Microsoft. **The Drive MCP steps below may no longer work**, and the commission
-> sheets are owned by claire.cai@shift4.com, not Bryce, so their new home is not knowable
-> from here.
->
-> **On the next "refresh commissions", FIRST try the Microsoft path, then ask Bryce if it fails:**
-> 1. `sharepoint_search` / `outlook_email_search` for "Digital Marketing" and
->    "SkyForce Commission History" — Claire may now share them via SharePoint or as
->    Excel attachments.
-> 2. If the Drive MCP still resolves the old file IDs (Bryce may retain personal Google
->    access for his own Customers sheet), the legacy path below is still valid.
-> 3. Otherwise **ask Bryce where the sheets live now** and whether the Customers sheet
->    moved to Excel/SharePoint. Do not guess, and do not partially ingest — the ingest is
->    delete+replace, so a bad parse wipes good data.
->
-> The parsers (`scripts/parse_commission_sheets.py`, `scripts/parse_customers_csv.py`) are
-> format-based, not source-based. If you can get the same CSV/text out of SharePoint or an
-> `.xlsx`, they still work unchanged.
+> ## SOURCE RESOLVED 2026-09-16
+> Bryce supplies the files directly each cycle, so no Drive or SharePoint hunting is
+> needed. He drops them in ~/Downloads and points at them. The parsers are format
+> based, not source based, so they work on whatever he hands over. If a file is not
+> attached, just ask him for it rather than searching.
 
-## Steps
+## Monthly refresh: the two files Bryce provides (updated 2026-09-16)
 
-1. Get the sheets:
-   - **Customers sheet** (`18MyDeMFwr1p_aAWuQKIxVvwk_3ii8U2Ir2xyX8g1CaE`) — deal registry. Pull it yourself with the Drive MCP `download_file_content` and `exportMimeType: text/csv`, then base64-decode to a file and parse with `scripts/parse_customers_csv.py` → `parse_customers_csv(path)`. Do NOT use `read_file_content` on this sheet — that path truncates around row 159. The CSV export returns all rows, so there is no need to ask Bryce to export it by hand. Only the top deal grid parses; the vendor/prospect/goals scratch below the deals has no MID so it's skipped automatically.
-   - **Commission sheets** (owner claire.cai@shift4.com): the monthly **Digital Marketing** files and the **SkyForce Commission History** (`1CLpEVOSjg1WQ4LYJS9UoisEztQ31u4G5`), read via Drive MCP. Use the `Data` section of each DM file (per-MID payout rows) + the full SkyForce stream.
-2. Parse payouts with `scripts/parse_commission_sheets.py`: `parse_payouts(text, source)` per sheet, then `dedup_payouts(...)` (DM sheets re-list SkyForce true-ups that flow through their cycle — dedup collapses them). Parse deals with `scripts/parse_customers_csv.py`.
-3. POST to Railway `/api/ingest` with `X-API-Key`:
-   - `{"type": "payouts", "payouts": [...]}` — delete+replace all payout lines
-   - `{"type": "deals", "deals": [...]}` — delete+replace the deal registry
-4. Report: payout/deal counts, and any deals with no matching payout (audit candidates) or payout MIDs not in the registry.
+Bryce now supplies TWO files each cycle. Use both; they answer different questions.
+
+### 1. Merchant portal export — `Merchants_ST4DM.xlsx`
+Shift4's own merchant list. **Authoritative on account status**, more so than
+email or Salesforce. One row per MID. Columns that matter:
+
+| Column | Use |
+|---|---|
+| `Merchant ID` | join key. Normalize with `models.normalize_mid` (strip leading zeros) |
+| `Status Code` | **the whole point.** 700 = Approved processing = the comp plan go live threshold. 600 = Approved but not processing yet. 200 Declined, 300 Closed merchant cancelled, 325 Closed termination = dead |
+| `Status Name` | human label for the note |
+| `Software Product Group` | Shift4 Dine / Shift4 One / Standalone Terminal. Shift4 One and Standalone earn NO device SaaS and the $200 upfront rather than $250 |
+| `Advantage Program` | Included / Not Included |
+| `Last Batch Date` | was empty in the 9/16 export; if populated later it is the best "actually transacting" signal |
+
+Map status code to tracker status:
+- 700 → `live`
+- 600 → leave as is if pre install; do not mark live, it has not processed
+- 200 / 300 / 325 → `cancelled`, with `stall_reason` naming the status
+Record the portal status as a timeline note on every matched deal.
+
+**Trust this over Salesforce `Start_Processing_Date__c`.** That field means an
+expected or scheduled date and is often in the future; status 700 means the MID
+actually processed. The 9/16 reconciliation found 5 disagreements across 77
+matched deals, and the portal was right in every case.
+
+### 2. Commission statements (Digital Marketing + SkyForce)
+Same parsers as before: `scripts/parse_commission_sheets.py` then
+`dedup_payouts()`, POST as `{"type":"payouts", ...}` (delete and replace).
+
+### Order of operations
+1. Ingest payouts first, so real money overrides every estimate.
+2. Apply the merchant portal statuses.
+3. Re-run the back test in the calibration section below and update
+   `cost_basis_pct` if the sample has grown.
+4. Report: new payouts, status changes, deals now live, deals now dead, and the
+   updated projection.
+
+### Calibration (re-do each cycle, the sample is small)
+`cost_basis_pct` in `deal_tracker.py` is currently 2.73%, derived from only THREE
+dual pricing deals with both a known volume and a settled true up. To recalibrate:
+for every deal with `stage == complete` and a known `mo_volume`, implied cost
+basis = `rate_pct - ((true_up + upfront) / 2 / mo_volume * 100)`. Take the median.
+As of 9/16 the estimates still ran about 20% low against actuals.
 
 ## Reference
 
