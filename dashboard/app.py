@@ -50,7 +50,7 @@ from models import (db, Lead, Opportunity, Callback, KpiLog,
                     SFTaskData, BossMetrics, TeamMetrics, EmailTemplate,
                     LeadEmailQueue, UserNotes, Commission, OppDraftQueue,
                     Template, Deal, CommissionPayout, PageView, OppTarget,
-                    TrackedDeal, DealEvent, normalize_mid)
+                    TrackedDeal, DealEvent, OppRating, normalize_mid)
 import deal_tracker
 from deal_tracker import parse_iso as _parse_iso, next_payday_for as _next_payday_for
 
@@ -494,7 +494,8 @@ def my_leads():
     source_filter = request.args.get('source', '')
     stage_filter  = request.args.get('stage', '')
 
-    color_map = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
+    color_map  = {lc.sf_id: lc.color for lc in LeadColor.query.all()}
+    rating_map = {r.sf_id: r.stars for r in OppRating.query.all()}
 
     # ── Leads ──
     lead_q = Lead.query
@@ -532,6 +533,7 @@ def my_leads():
         d['timezone'] = get_phone_tz(o.phone)
         d['sf_url']   = f"{SF_BASE}/lightning/r/Opportunity/{o.id}/view"
         d['type']     = 'opportunity'
+        d['stars']    = rating_map.get(o.id, 0)
         d['score']    = score_record(d)
         age = days_since(d.get('created_date'))
         d['opp_age_days'] = None if age == 9999 else age
@@ -1726,6 +1728,76 @@ def sf_lookup():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/opp_rating', methods=['POST'])
+def set_opp_rating():
+    """Set Bryce's 1-3 star quality rating on an opportunity.
+
+    Body: {"sf_id": "006...", "stars": 3}   stars 0 (or null) clears it.
+    """
+    data  = request.get_json() or {}
+    sf_id = (data.get('sf_id') or '').strip()
+    if not sf_id:
+        return jsonify({'error': 'sf_id required'}), 400
+    try:
+        stars = int(data.get('stars') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'stars must be 0-3'}), 400
+    if stars not in (0, 1, 2, 3):
+        return jsonify({'error': 'stars must be 0-3'}), 400
+
+    r = OppRating.query.get(sf_id)
+    if stars:
+        now = datetime.now().isoformat(timespec='seconds')
+        if r:
+            r.stars = stars
+            r.updated_at = now
+        else:
+            db.session.add(OppRating(sf_id=sf_id, stars=stars, updated_at=now))
+    elif r:
+        db.session.delete(r)
+
+    db.session.commit()
+    return jsonify({'ok': True, 'sf_id': sf_id, 'stars': stars})
+
+
+@app.route('/api/opp_ratings')
+def get_opp_ratings():
+    """Rated opportunities, joined to live opp data — used by the daily briefing.
+
+    Optional ?stars=3 filters to a single rating.
+    """
+    want = request.args.get('stars', '')
+    ratings = OppRating.query.all()
+    if want:
+        try:
+            ratings = [r for r in ratings if r.stars == int(want)]
+        except ValueError:
+            return jsonify({'error': 'stars must be an integer'}), 400
+
+    opps = {o.id: o for o in Opportunity.query.all()}
+    out = []
+    for r in sorted(ratings, key=lambda x: -x.stars):
+        o = opps.get(r.sf_id)
+        row = {'sf_id': r.sf_id, 'stars': r.stars, 'updated_at': r.updated_at,
+               'sf_url': f"{SF_BASE}/lightning/r/Opportunity/{r.sf_id}/view"}
+        if o:
+            d = o.to_dict()
+            row.update({
+                'name': d.get('name'), 'account_name': d.get('account_name'),
+                'contact_name': d.get('contact_name'), 'email': d.get('email'),
+                'phone': d.get('phone'), 'stage': d.get('stage'),
+                'amount': d.get('amount'), 'lead_source': d.get('lead_source'),
+                'last_activity_date': d.get('last_activity_date'),
+                'close_date': d.get('close_date'),
+                'notes_snippet': d.get('notes_snippet'),
+            })
+        else:
+            row['stale'] = True   # rated opp no longer in the open-opp list
+        out.append(row)
+
+    return jsonify({'count': len(out), 'ratings': out})
 
 
 @app.route('/api/lead_color', methods=['POST'])

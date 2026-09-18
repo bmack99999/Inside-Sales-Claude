@@ -219,6 +219,23 @@ class LeadColor(db.Model):
         return {'sf_id': self.sf_id, 'color': self.color}
 
 
+class OppRating(db.Model):
+    """Bryce's 1-3 star quality rating on an opportunity, keyed by Salesforce ID.
+
+    Kept in its own table (like LeadColor) so ratings survive the nightly
+    delete-and-replace of the opportunities table.
+    """
+    __tablename__ = 'opp_ratings'
+
+    sf_id      = db.Column(db.Text, primary_key=True)
+    stars      = db.Column(db.Integer, nullable=False)  # 1 | 2 | 3
+    updated_at = db.Column(db.Text)
+
+    def to_dict(self):
+        return {'sf_id': self.sf_id, 'stars': self.stars,
+                'updated_at': self.updated_at}
+
+
 class RefreshLog(db.Model):
     __tablename__ = 'refresh_log'
 
