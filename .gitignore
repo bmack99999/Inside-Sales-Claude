@@ -9,12 +9,12 @@ __pycache__/
 # Claude local machine settings (machine-specific, do not commit)
 .claude/settings.local.json
 
-# Salesforce extracted data — regenerated each morning, may contain contact info
-dashboard/data/leads.json
-dashboard/data/opportunities.json
-dashboard/data/last_refresh.json
-dashboard/data/recycled_leads.json
-dashboard/data/recycled_refresh.json
+# Salesforce extracted data — regenerated each morning, may contain contact info.
+# Ignore the whole directory: the extraction scripts write several files here
+# (leads, opportunities, tasks, metrics, commissions) and every run dirtied the
+# working tree. The Flask app reads Postgres, not these files, so nothing in the
+# deploy depends on them.
+dashboard/data/
 
 # Local SQLite database
 dashboard/local.db
