@@ -16,11 +16,32 @@ registry (from Bryce's "Customers" sheet) joined to `CommissionPayout` lines
 (from the commission sheets) on normalized MID. There is no sheet auth in
 the extraction scripts — Claude is the bridge.
 
-> ## SOURCE RESOLVED 2026-09-16
-> Bryce supplies the files directly each cycle, so no Drive or SharePoint hunting is
-> needed. He drops them in ~/Downloads and points at them. The parsers are format
-> based, not source based, so they work on whatever he hands over. If a file is not
-> attached, just ask him for it rather than searching.
+> ## SOURCE RESOLVED 2026-09-21 — statements live in Mike Seymour's OneDrive
+> **The commission statements are published here, and Bryce does NOT get them by email:**
+>
+> `mseymour_shift4corp_com` → `Hospitality ED_EM_PD Commissions` → `Digital Marketing Sales Team` → `Bryce Mack (SF Transfer to DMS - 3_20_2026)`
+>
+> driveId `b!4FxXtYw65kKygZChfi2XxHi7dPr0dqRHi8ZgVvXH4KQnj7AMri1yQrpPENmjSj5E`
+>
+> Read the folder with `read_resource` on
+> `file:///{driveId}/Hospitality ED_EM_PD Commissions/Digital Marketing Sales Team/Bryce Mack (SF Transfer to DMS - 3_20_2026)`
+> then `read_resource` the individual `.xlsx` — the workbook comes back as parsed sheets,
+> no download needed. **Caution:** the folder listing concatenates each item id directly
+> onto the next filename with no delimiter, so ids are easy to truncate by one character.
+> If a read 400s with "Invalid request", you clipped the id; re-read the folder.
+>
+> Files are named `Digital Marketing Commission YYYYMM02 (Final) - Bryce Mack.xlsx`, one
+> per month, plus the legacy `SkyForce Commission 20260402` and `SkyForce Commission History`.
+> Search hint: a plain "commission" SharePoint search drowns in European Global Blue
+> marketing decks — search `SkyForce` or go straight to the path above.
+>
+> **The merchant portal export Bryce still supplies himself** (`Merchants_ST4DM.CSV` in
+> ~/Downloads). Ask for a fresh one each cycle; the parsers are format based so CSV or
+> XLSX both work.
+>
+> Prior guidance said Bryce supplies everything and no hunting is needed. That is still
+> true for the portal export, but the statements are now self serve — check OneDrive for
+> a newer month before asking him.
 
 ## Monthly refresh: the two files Bryce provides (updated 2026-09-16)
 
@@ -62,12 +83,26 @@ Same parsers as before: `scripts/parse_commission_sheets.py` then
 4. Report: new payouts, status changes, deals now live, deals now dead, and the
    updated projection.
 
-### Calibration (re-do each cycle, the sample is small)
-`cost_basis_pct` in `deal_tracker.py` is currently 2.73%, derived from only THREE
-dual pricing deals with both a known volume and a settled true up. To recalibrate:
-for every deal with `stage == complete` and a known `mo_volume`, implied cost
-basis = `rate_pct - ((true_up + upfront) / 2 / mo_volume * 100)`. Take the median.
-As of 9/16 the estimates still ran about 20% low against actuals.
+### Calibration (re-do each cycle — but read this first)
+`cost_basis_pct` in `deal_tracker.py` is 2.73%. To recalibrate: for every deal with a
+settled true up and a known volume, implied cost basis =
+`rate_pct - ((true_up + upfront) / 2 / mo_volume * 100)`. Actuals live under the deal's
+`paid` block (`paid.true_up`, `paid.upfront`), NOT in top level `true_up_actual` fields.
+
+**Do not just take the median.** The 2026-09-21 pass (n=9, median 2.82) showed that
+number is an artifact of bad volume estimates, not cost. Always cross check each deal's
+stored `mo_volume` against the **actual processed volume** in the statement's Analysis
+sheet (`2026MM Processing Vol` column) before trusting an implied figure:
+
+- Any implied cost basis **above the card rate** (e.g. >4% on a 4% dual pricing deal) is
+  mathematically impossible and means the volume is overstated, not that costs are high.
+- On 9/21 the only deal whose estimate matched actuals (Corner Bar, 0.98x) implied 2.71 —
+  right on the current setting. The rest ran 0.00x to 0.73x of estimate. Earnestines was
+  booked at $30k/mo and processed $42.
+- **Conclusion: 2.73 held.** The model's error is volume capture at disco, not cost basis.
+  Raising the parameter would fit it to volume error and degrade well estimated deals.
+
+Only move `cost_basis_pct` when deals with *verified accurate* volumes disagree with it.
 
 ## Reference
 

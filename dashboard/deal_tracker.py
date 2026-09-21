@@ -26,9 +26,26 @@ DEFAULT_ASSUMPTIONS = {
     'upfront_dine':        250.0,   # new SkyTab / Shift4 Dine POS MID
     'upfront_other':       200.0,   # terminal, Solo, processing only
     'bonus_cap':          3000.0,   # upfront + true up ceiling
-    # Calibrated 2026-09-16 against the only three dual pricing deals with both a
-    # known volume and a settled true up (implied 2.73 / 2.82 / 2.16). Revisit as
-    # more deals true up; three is a thin sample.
+    # Calibrated 2026-09-16 against three dual pricing deals; re-tested 2026-09-21
+    # against nine. HELD AT 2.73 deliberately.
+    #
+    # The nine-deal median implies 2.82, but that number is an artifact of bad
+    # volume estimates, not a real cost basis. Cross checking the September
+    # statement's actual processed volume against each deal's stored mo_volume:
+    #
+    #   Corner Bar      $60k est / $58.6k actual (0.98x) -> implied 2.71
+    #   Rustys Rooster  $80k est / $58.8k actual (0.73x) -> implied 2.13
+    #   Almys           $20k est /  $5.5k actual (0.27x) -> implied 2.09
+    #   Swiss Cafe      $35k est /  $5.4k actual (0.15x) -> implied 2.35
+    #   Pizza Tacos     $20k est /  $1.6k actual (0.08x) -> implied 2.63
+    #   Earnestines     $30k est /    $42 actual (0.00x) -> implied nonsense
+    #
+    # Every deal implying a cost basis above the 4% card rate (mathematically
+    # impossible) is one whose volume was overstated several fold. The single
+    # deal with an accurate volume implies 2.71, right on this value. Raising
+    # cost_basis_pct would fit the parameter to volume error and make the model
+    # worse for well estimated deals. The real fix is better volume capture at
+    # disco, not a higher cost basis.
     'cost_basis_pct':        2.73,  # blended interchange + network cost, % of volume
     'cost_per_item':         0.10,  # per transaction cost
     'avg_ticket':           35.0,   # used to turn volume into a transaction count
