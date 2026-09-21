@@ -137,6 +137,11 @@ def extract_leads():
         created = r.get("Lead_Created_Date__c") or r.get("CreatedDate")
         lead_age = days_between(created) if created else None
 
+        # Notes = real conversations (newest first); activities = attempts.
+        notes = content_notes_by_lead.get(lid, [])
+        latest_note = notes[0] if notes else None
+        days_since_note = days_between(latest_note["date"]) if latest_note and latest_note.get("date") else None
+
         leads.append({
             "id": lid,
             "type": "lead",
@@ -154,7 +159,12 @@ def extract_leads():
             "call_attempts": call_attempts,
             "city": r.get("City"),
             "state": r.get("State"),
-            "notes_snippet": (last_call_notes or content_notes_by_lead.get(lid) or "")[:100] or None,
+            "notes_snippet": (latest_note["text"] if latest_note
+                              else (last_call_notes or None)),
+            "notes": notes,
+            "note_count": len(notes),
+            "latest_note_date": latest_note["date"] if latest_note else None,
+            "days_since_note": days_since_note,
             "last_call_notes": last_call_notes,
             "activity_summary": activity_summary,
             "next_agreed_step": None,
@@ -209,7 +219,12 @@ def extract_opportunities():
     tasks_by_opp = get_tasks_for_records(opp_ids, "WhatId")
     activities_by_opp = get_recent_activities(opp_ids, "WhatId")
 
-    # Get ContentNotes for opps
+    # Per-opp completed-call counts. Bryce logs non-connects as activities
+    # (not notes), so this is the attempt count — high attempts with a stale
+    # newest note is the real "cooling deal" signal.
+    call_counts_by_opp = get_call_counts(opp_ids, "WhatId")
+
+    # Get ContentNotes for opps (all notes, newest first)
     content_notes_by_opp = get_content_notes(opp_ids)
 
     now = datetime.now().isoformat()
@@ -250,6 +265,13 @@ def extract_opportunities():
 
         days_in_stage = days_between(r.get("LastStageChangeDate")) or 0
 
+        # Notes are where Bryce records real conversations (one note per
+        # conversation); activities are dial/attempt tracking only.
+        notes = content_notes_by_opp.get(oid, [])
+        latest_note = notes[0] if notes else None
+        days_since_note = days_between(latest_note["date"]) if latest_note and latest_note.get("date") else None
+        call_attempts = call_counts_by_opp.get(oid, 0)
+
         opps.append({
             "id": oid,
             "type": "opportunity",
@@ -269,7 +291,13 @@ def extract_opportunities():
             "next_task_due": next_task_due,
             "days_in_stage": days_in_stage,
             "probability": r.get("Probability") or 0,
-            "notes_snippet": (last_call_notes or content_notes_by_opp.get(oid) or r.get("Description") or "")[:100] or None,
+            "notes_snippet": (latest_note["text"] if latest_note
+                              else (last_call_notes or r.get("Description") or None)),
+            "notes": notes,
+            "note_count": len(notes),
+            "latest_note_date": latest_note["date"] if latest_note else None,
+            "days_since_note": days_since_note,
+            "call_attempts": call_attempts,
             "last_call_notes": last_call_notes,
             "activity_summary": activity_summary,
             "next_agreed_step": None,
@@ -357,8 +385,36 @@ def get_call_counts(record_ids, id_field):
     return counts
 
 
+def merge_note_text(title, preview):
+    """Combine a ContentNote Title and TextPreview into one string.
+
+    Bryce often puts the whole note in the Title and leaves the body empty
+    (e.g. "Email to Peter to reengage"), so reading TextPreview alone loses
+    his most recent entries. When the title is just the opening of the body,
+    don't repeat it.
+    """
+    title = (title or "").strip()
+    preview = (preview or "").strip()
+    if title.lower() in ("untitled note",):
+        title = ""
+    if not title:
+        return preview
+    if not preview:
+        return title
+    # Salesforce auto-titles a note with its first ~30 chars; avoid echoing it
+    if preview.lower().startswith(title.lower().rstrip('.').rstrip()[:25].lower()):
+        return preview
+    return f"{title} — {preview}"
+
+
 def get_content_notes(record_ids):
-    """Get most recent ContentNote TextPreview grouped by record ID."""
+    """Get ALL ContentNotes per record, newest first.
+
+    Returns {record_id: [ {date, title, text}, ... ]} sorted by CreatedDate
+    descending. Half of Bryce's open opps carry multiple notes (one per real
+    conversation), so keeping only one — as this used to — can surface a note
+    months out of date and make a live deal look dead.
+    """
     if not record_ids:
         return {}
     batch_size = 200
@@ -372,20 +428,33 @@ def get_content_notes(record_ids):
         )
         if not doc_links:
             continue
-        doc_ids = list(set(d['ContentDocumentId'] for d in doc_links))
-        entity_map = {d['ContentDocumentId']: d['LinkedEntityId'] for d in doc_links}
+        # One document can be linked to several records, so map to a list.
+        entity_map = {}
+        for d in doc_links:
+            entity_map.setdefault(d['ContentDocumentId'], []).append(d['LinkedEntityId'])
+        doc_ids = list(entity_map)
         for j in range(0, len(doc_ids), batch_size):
             doc_batch = doc_ids[j:j + batch_size]
             doc_id_list = "','".join(doc_batch)
             notes = run_soql(
-                f"SELECT Id, TextPreview, CreatedDate "
-                f"FROM ContentNote WHERE Id IN ('{doc_id_list}') "
-                f"ORDER BY CreatedDate DESC"
+                f"SELECT Id, Title, TextPreview, CreatedDate "
+                f"FROM ContentNote WHERE Id IN ('{doc_id_list}')"
             )
             for note in notes:
-                eid = entity_map.get(note['Id'])
-                if eid and eid not in notes_by_id and note.get('TextPreview'):
-                    notes_by_id[eid] = note['TextPreview']
+                text = merge_note_text(note.get('Title'), note.get('TextPreview'))
+                if not text:
+                    continue
+                entry = {
+                    "date": (note.get('CreatedDate') or "")[:10] or None,
+                    "title": (note.get('Title') or "").strip() or None,
+                    "text": text,
+                }
+                for eid in entity_map.get(note['Id'], []):
+                    notes_by_id.setdefault(eid, []).append(entry)
+    # Sort globally per record — batch-local ORDER BY was not enough, since
+    # a record's notes can span batches and "first seen" then won arbitrarily.
+    for eid in notes_by_id:
+        notes_by_id[eid].sort(key=lambda n: n["date"] or "", reverse=True)
     return notes_by_id
 
 

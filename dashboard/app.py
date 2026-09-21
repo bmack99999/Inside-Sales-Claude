@@ -91,6 +91,15 @@ with app.app_context():
         ("tracked_deals",  "sf_start_processing_date", "TEXT"),
         ("tracked_deals",  "cfd",               "INTEGER DEFAULT 0"),
         ("tracked_deals",  "kitchen_printers",  "INTEGER DEFAULT 0"),
+        ("opportunities",  "notes",            "TEXT"),
+        ("opportunities",  "note_count",       "INTEGER DEFAULT 0"),
+        ("opportunities",  "latest_note_date", "TEXT"),
+        ("opportunities",  "days_since_note",  "INTEGER"),
+        ("opportunities",  "call_attempts",    "INTEGER DEFAULT 0"),
+        ("leads",          "notes",            "TEXT"),
+        ("leads",          "note_count",       "INTEGER DEFAULT 0"),
+        ("leads",          "latest_note_date", "TEXT"),
+        ("leads",          "days_since_note",  "INTEGER"),
     ]
     for tbl, col, col_type in _migrations:
         if not _col_exists(tbl, col):
