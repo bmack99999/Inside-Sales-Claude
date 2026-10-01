@@ -89,7 +89,7 @@
 .cx-toolbar-right input:focus, .cx-toolbar-right select:focus { outline:none; border-color:var(--cx-accent); box-shadow:0 0 0 3px var(--cx-accent-soft); }
 
 /* table */
-.cx-table-wrap { overflow-x:auto; }
+.cx-table-wrap { overflow-x:clip; }
 .cx-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
 .cx-table th {
   text-align:left; font-size:11px; letter-spacing:.5px; text-transform:uppercase; color:var(--cx-ink-3); font-weight:700;
