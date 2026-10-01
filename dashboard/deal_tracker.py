@@ -11,7 +11,8 @@ signed 2026-03-23):
     after the go live month, minus the upfront already paid. Can be negative
     (true down). Upfront + true up capped at $3,000.
   * SaaS: Bryce is paid two months of SaaS, which scales with device count.
-  * Timing: upfront on the first payroll after go live; true up earned on
+  * Timing: upfront on the last payroll of the month after the go live
+    month (Bryce, 2026-10-01); true up earned on
     the last day of the second full month and paid in the second payroll
     cycle after that. Paydays here are modeled as the last bi-weekly Friday
     of the month, matching how the payout sheets actually land.
@@ -352,11 +353,12 @@ def compute_deal(deal, payout_lines, a, today=None):
     elif sched:
         go_live_est, go_live_basis = sched + timedelta(days=a['days_install_to_live']), 'scheduled install'
     elif paid['upfront'] > 0:
-        # upfront pays the payroll after go live; back into the month
+        # upfront pays the last payroll of the month after go live; back into
+        # the middle of the prior month
         up_dates = [l['date_paid'] for l in paid['lines'] if l['type'] == 'upfront' and l['date_paid']]
         up = parse_iso(min(up_dates)) if up_dates else None
         if up:
-            go_live_est, go_live_basis = up - timedelta(days=21), 'upfront payout'
+            go_live_est, go_live_basis = _add_months(up, -1) + timedelta(days=14), 'upfront payout'
     if go_live_est is None and sign:
         go_live_est = sign + timedelta(days=a['days_sign_to_install'] + a['days_install_to_live'])
         go_live_basis = 'sign date + %dd' % (a['days_sign_to_install'] + a['days_install_to_live'])
@@ -364,7 +366,7 @@ def compute_deal(deal, payout_lines, a, today=None):
         go_live_est = today + timedelta(days=a['days_install_to_live'])
         go_live_basis = 'not live yet, assumes soon'
 
-    upfront_pay_est = next_payday_for(go_live_est) if go_live_est else None
+    upfront_pay_est = last_payday_of_month(_add_months(go_live_est, 1)) if go_live_est else None
     true_up_pay_est = None
     if go_live_est:
         # earned end of 2nd full month after go live month; paid second cycle after
@@ -405,8 +407,6 @@ def compute_deal(deal, payout_lines, a, today=None):
         risks.append('No install date or Salesforce processing date %d days after signing, left out of the forecast' % dss)
     if stage == 'install_scheduled' and sched and sched < today - timedelta(days=3):
         risks.append('Scheduled install date passed without an install')
-    if stage in ('installed', 'live') and go_live_est and (today - go_live_est).days > 45:
-        risks.append('No upfront paid %d days after go live' % (today - go_live_est).days)
     if upfront_overdue:
         risks.append('Upfront looks overdue, expected around %s' % upfront_pay_est.isoformat())
     if true_up_overdue and (today - true_up_pay_est).days > 14:
