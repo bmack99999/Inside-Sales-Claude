@@ -89,6 +89,18 @@
         Follows the unqualified / underwriting toggles above.
       </div>
     </div>
+    <div class="log-table-card" id="src-cohort-card" style="margin-bottom:24px;display:none">
+      <div class="log-table-title">Close Rate by Lead Month — Top Sources</div>
+      <div style="height:300px;padding:8px 4px">
+        <canvas id="src-cohort-canvas"></canvas>
+      </div>
+      <div style="margin-top:4px;font-size:11px;color:#aaa;padding:0 4px">
+        Each point is how that month's batch of leads performed: wins traced back to the month the lead came in, not the month the deal closed.
+        The latest month is still closing and will rise as those leads mature; the current month is left off until it has time to close.
+        Months where a source had fewer than 15 leads are skipped. Click a source in the legend to hide it. Follows the unqualified / underwriting toggles above.
+      </div>
+    </div>
+
     <div class="log-table-card" style="margin-bottom:24px">
       <div class="log-table-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <span>Team Totals by Lead Source</span>

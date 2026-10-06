@@ -441,6 +441,99 @@ function renderMixWins() {
   });
 }
 
+// ── Close rate by lead month, per source (cohort view) ───────────────────────
+// Each win is tied back to the month its lead was created, so a point is how
+// that batch of leads performed. The current month is left off (too young to
+// read) and the latest complete month is shaded as still closing.
+let _srcCohortChart = null;
+const _SRC_COHORT_TOP = 7;          // max sources plotted
+const _SRC_COHORT_MIN_LEADS = 15;   // skip a month with fewer leads than this
+const _SRC_COHORT_COLORS = ['#1f3a5f', '#2563eb', '#0d9488', '#d97706', '#9333ea', '#dc2626', '#65a30d'];
+
+function renderSourceCohorts() {
+  const canvas = document.getElementById('src-cohort-canvas');
+  const cohorts = _mixData && _mixData.source_cohorts;
+  const card = document.getElementById('src-cohort-card');
+  if (!canvas || !card || typeof Chart === 'undefined') return;
+  if (!cohorts || !Object.keys(cohorts).length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const now = new Date();
+  const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const keys = Object.keys(cohorts).sort().filter(k => k < curKey);
+  const labels = keys.map(k => {
+    const [y, m] = k.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+  });
+
+  // Plot sources still being bought: enough leads in each of the last 3
+  // complete months (drops retired sources like Paid Ad), biggest first.
+  const recent = keys.slice(-3);
+  const totals = {};
+  keys.forEach(k => Object.entries(cohorts[k]).forEach(([s, v]) => {
+    totals[s] = (totals[s] || 0) + v[0];
+  }));
+  const sources = Object.keys(totals)
+    .filter(s => recent.every(k => ((cohorts[k][s] || [0])[0]) >= _SRC_COHORT_MIN_LEADS))
+    .sort((a, b) => totals[b] - totals[a]).slice(0, _SRC_COHORT_TOP);
+
+  const notes = {};
+  const datasets = sources.map((s, i) => {
+    notes[s] = [];
+    const data = keys.map(k => {
+      const [l, w, inv, uw] = cohorts[k][s] || [0, 0, 0, 0];
+      const leads = l - (_mixValid ? inv : 0);
+      const won = w + (_mixUW ? uw : 0);
+      notes[s].push(`${won} won of ${leads} leads`);
+      return leads >= _SRC_COHORT_MIN_LEADS ? +(won / leads * 100).toFixed(1) : null;
+    });
+    const color = _SRC_COHORT_COLORS[i % _SRC_COHORT_COLORS.length];
+    return { label: s, data, borderColor: color, backgroundColor: color,
+             borderWidth: 2.5, tension: 0.25, pointRadius: 3.5, spanGaps: true };
+  });
+
+  // Gray band behind the latest month: those leads are still closing
+  const stillClosing = {
+    id: 'stillClosing',
+    beforeDatasetsDraw(chart) {
+      const n = chart.data.labels.length;
+      if (n < 2) return;
+      const x = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+      const left = (x.getPixelForValue(n - 2) + x.getPixelForValue(n - 1)) / 2;
+      ctx.save();
+      ctx.fillStyle = 'rgba(156,163,175,0.15)';
+      ctx.fillRect(left, area.top, area.right - left, area.bottom - area.top);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('still closing', (left + area.right) / 2, area.top + 12);
+      ctx.restore();
+    },
+  };
+
+  if (_srcCohortChart) _srcCohortChart.destroy();
+  _srcCohortChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    plugins: [stillClosing],
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { itemSort: (a, b) => (b.parsed.y || 0) - (a.parsed.y || 0), callbacks: {
+          label: c => c.dataset.label + ': ' + (c.parsed.y == null ? 'too few leads'
+            : c.parsed.y + '% (' + notes[c.dataset.label][c.dataIndex] + ')'),
+        } },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 11 } } },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
 function exportMixCSV() {
   const rows = _mixRows();
   rows.sort((a, b) => _mixSortCol === 'name'
@@ -494,6 +587,7 @@ function renderMixAdjusted(mix) {
     applyMixWindow();
     renderMixTrend();
     renderMixWins();
+    renderSourceCohorts();
   };
 
   document.getElementById('mix-export-btn').onclick = exportMixCSV;
@@ -512,6 +606,7 @@ function renderMixAdjusted(mix) {
       applyMixWindow();
       renderMixTrend();
       renderMixWins();
+      renderSourceCohorts();
     };
   }
   const trendMetric = document.getElementById('mix-trend-metric');
@@ -552,4 +647,5 @@ function renderMixAdjusted(mix) {
   applyMixWindow();
   renderMixTrend();
   renderMixWins();
+  renderSourceCohorts();
 }

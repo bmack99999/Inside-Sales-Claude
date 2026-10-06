@@ -369,6 +369,37 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
             "rep_start_overrides": dict(REP_START_OVERRIDES)}
 
 
+def _pull_source_cohorts(start=MIX_WINDOW_START):
+    """Lead source performance by the month each lead was CREATED.
+
+    Unlike the mix windows (wins bucketed by CloseDate), every win here is
+    traced back through Lead.ConvertedOpportunity to the month its lead came
+    in, so a month's close rate is how that batch of leads actually performed.
+    Recent cohorts are still closing and read low until they mature.
+
+    Returns {"YYYY-MM": {source: [leads, won, invalid, uw]}}.
+    """
+    floor = _rep_floor_clause("CreatedDate")
+    base = (f"FROM Lead WHERE OwnerId IN ({TEAM_IDS}) "
+            f"AND CreatedDate >= {start}T00:00:00Z{floor}")
+    group = ("GROUP BY LeadSource, CALENDAR_YEAR(CreatedDate), "
+             "CALENDAR_MONTH(CreatedDate)")
+    sel = ("SELECT LeadSource, CALENDAR_YEAR(CreatedDate) y, "
+           "CALENDAR_MONTH(CreatedDate) m, COUNT(Id) c ")
+    filters = [
+        "",
+        " AND IsConverted=true AND ConvertedOpportunity.StageName='Closed Won'",
+        f" AND Status='Unqualified' AND Loss_Reason__c IN ({INVALID_LOSS_REASONS})",
+        " AND IsConverted=true AND ConvertedOpportunity.StageName='Underwriting Review'",
+    ]
+    out = defaultdict(lambda: defaultdict(lambda: [0, 0, 0, 0]))
+    for i, f in enumerate(filters):
+        for r in sf_query(f"{sel}{base}{f} {group}"):
+            key = f"{r['y']:04d}-{r['m']:02d}"
+            out[key][r.get("LeadSource") or "Unknown"][i] = r["c"]
+    return {k: dict(v) for k, v in sorted(out.items())}
+
+
 def _pull_mix_all_windows():
     """Cumulative-since-January mix data plus one snapshot per month,
     so the KPIs pivot can offer a month dropdown like the leaderboard.
@@ -402,6 +433,7 @@ def _pull_mix_all_windows():
         snap["month_label"] = date(y, m, 1).strftime("%B %Y")
         monthly[key] = snap
     out["monthly"] = monthly
+    out["source_cohorts"] = _pull_source_cohorts()
     return out
 
 
