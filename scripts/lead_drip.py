@@ -124,7 +124,11 @@ def stop_entry(entry, reason, day):
 
 def action(entry, step):
     text, body_html = render(step, entry['name'])
-    return {'lead_id': entry['lead_id'], 'name': entry['name'], 'email': entry['email'],
+    extra = {}
+    if step == 1:
+        # Used instead of touch 1 when Bryce already sent his own info email.
+        extra['step2_body_html'] = render(2, entry['name'])[1]
+    return {**extra,'lead_id': entry['lead_id'], 'name': entry['name'], 'email': entry['email'],
             'step': step, 'subject': SUBJECT if step == 1 else 'RE: ' + SUBJECT,
             'reply_on_thread': step > 1, 'touch1_sent_on': entry.get('touch1_sent_on'),
             'body_text': text, 'body_html': body_html,
@@ -205,6 +209,27 @@ def cmd_record(state, lead_id, step, day, message_id=None):
     return e
 
 
+def cmd_adopt(state, lead_id, sent_on, day):
+    """Bryce already sent his own info email, so it stands in for touch 1.
+
+    The drip picks up at touch 2 as a reply on his thread.  If his email is
+    older than the touch 2 gap, touch 2 is due today and later touches keep
+    their normal spacing from there.
+    """
+    e = state['leads'][lead_id]
+    if not is_live(state, day):
+        e.update(status='shadow', shadow_drafted_on=day.isoformat())
+    else:
+        if e['step_done'] != 0:
+            sys.exit('lead %s is at step %d, cannot adopt' % (lead_id, e['step_done']))
+        sent = datetime.date.fromisoformat(sent_on)
+        anchor = max(sent, day - datetime.timedelta(days=SCHEDULE[2]))
+        e.update(step_done=1, info_email_sent_on=sent_on, touch1_sent_on=anchor.isoformat(),
+                 next_due=(anchor + datetime.timedelta(days=SCHEDULE[2])).isoformat())
+    save_state(state)
+    return e
+
+
 def cmd_status(state):
     from collections import Counter
     entries = state['leads'].values()
@@ -223,6 +248,9 @@ def main():
     r.add_argument('lead_id')
     r.add_argument('step', type=int)
     r.add_argument('--message-id')
+    ad = sub.add_parser('adopt')
+    ad.add_argument('lead_id')
+    ad.add_argument('sent_on', help="date of Bryce's own info email (YYYY-MM-DD)")
     s = sub.add_parser('stop')
     s.add_argument('lead_id')
     s.add_argument('reason')
@@ -235,6 +263,8 @@ def main():
         out = cmd_plan(state, day)
     elif args.cmd == 'record':
         out = cmd_record(state, args.lead_id, args.step, day, args.message_id)
+    elif args.cmd == 'adopt':
+        out = cmd_adopt(state, args.lead_id, args.sent_on, day)
     elif args.cmd == 'stop':
         e = state['leads'][args.lead_id]
         stop_entry(e, args.reason, day)
