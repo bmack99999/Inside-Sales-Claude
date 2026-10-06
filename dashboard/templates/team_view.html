@@ -52,6 +52,8 @@
             <th class="mix-th-sort" data-col="conv_pct"     style="cursor:pointer">Conv%</th>
             <th class="mix-th-sort" data-col="won"          style="cursor:pointer">Won</th>
             <th class="mix-th-sort" data-col="actual_pct"   style="cursor:pointer">Close%</th>
+            <th class="mix-th-sort" data-col="live"         style="cursor:pointer" title="Closed Won deals with the Go-Live Check ticked in Salesforce">Live</th>
+            <th class="mix-th-sort" data-col="live_pct"     style="cursor:pointer" title="Live ÷ Closed Won (underwriting deals not counted)">Live%</th>
             <th class="mix-th-sort" data-col="expected_won" style="cursor:pointer">Exp Won</th>
             <th class="mix-th-sort" data-col="expected_pct" style="cursor:pointer">Exp%</th>
             <th class="mix-th-sort" data-col="index_pct"    style="cursor:pointer">Vs Exp</th>
@@ -66,6 +68,7 @@
         Expected = what an average closer would produce given the same leads, using team-average
         close rates per source. Grayed Vs Exp values = small sample, read with caution.
         Unqualified leads excluded by the toggle = duplicates, spam, never inquired, support requests, wrong contact info. Include underwriting adds deals currently sitting in underwriting review to the Won counts and every rate, counted in the month the deal was created; when a deal clears underwriting it moves to the month it closes.
+        Live = Closed Won deals with the Go-Live Check ticked in Salesforce; Live% = Live ÷ Closed Won (deals in underwriting are never counted). Recent months read low until those installs finish.
         Bryce's numbers start at his 3/1/26 transfer to the team; leads assigned to him before that are excluded.
       </div>
     </div>

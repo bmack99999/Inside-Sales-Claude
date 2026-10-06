@@ -248,6 +248,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
     wins  = defaultdict(lambda: defaultdict(int))
     inval = defaultdict(lambda: defaultdict(int))
     uw    = defaultdict(lambda: defaultdict(int))
+    live  = defaultdict(lambda: defaultdict(int))
 
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
@@ -272,6 +273,16 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
         f"GROUP BY OwnerId, LeadSource"
     ):
         wins[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
+
+    # Of those wins, how many have gone live (Go-Live Check ticked in SF).
+    for r in sf_query(
+        f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Opportunity "
+        f"WHERE OwnerId IN ({TEAM_IDS}) AND StageName='Closed Won' "
+        f"AND Go_Live_Check__c=true "
+        f"AND CloseDate >= {start}{win_end}{win_floor} "
+        f"GROUP BY OwnerId, LeadSource"
+    ):
+        live[r["OwnerId"]][r.get("LeadSource") or "Unknown"] = r["c"]
 
     for r in sf_query(
         f"SELECT OwnerId, LeadSource, COUNT(Id) c FROM Lead "
@@ -333,7 +344,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
         for s in set(leads[oid]) | set(conv[oid]) | set(wins[oid]) | set(uw[oid]):
             by_source[s] = [leads[oid].get(s, 0), conv[oid].get(s, 0),
                             wins[oid].get(s, 0), inval[oid].get(s, 0),
-                            uw[oid].get(s, 0)]
+                            uw[oid].get(s, 0), live[oid].get(s, 0)]
         reps.append({
             "name": name,
             "is_me": oid == MY_ID,
@@ -342,6 +353,7 @@ def _pull_mix_adjusted(start=MIX_WINDOW_START, end=None, baseline_rates=None):
             "won": tw,
             "invalid": sum(inval[oid].values()),
             "uw": sum(uw[oid].values()),
+            "live": sum(live[oid].values()),
             "conv_pct":     round(tc / tl * 100, 1) if tl else 0,
             "actual_pct":   round(tw / tl * 100, 1) if tl else 0,
             "expected_won": round(expected, 1),

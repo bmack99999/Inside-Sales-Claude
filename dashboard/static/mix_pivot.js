@@ -21,7 +21,8 @@ function _activeMix() {
   return _mixData;
 }
 
-function _bs4(arr) { return [arr[0] || 0, arr[1] || 0, arr[2] || 0, arr[3] || 0, arr[4] || 0]; }
+// by_source: [leads, converted, won, invalid, uw, live]
+function _bs4(arr) { return [arr[0] || 0, arr[1] || 0, arr[2] || 0, arr[3] || 0, arr[4] || 0, arr[5] || 0]; }
 
 function _effRates(mix) {
   // Team close rate per source, honoring the invalid-leads toggle.
@@ -35,17 +36,21 @@ function _effRates(mix) {
 }
 
 function _repTotals(r, rates, source) {
-  let L = 0, C = 0, W = 0, E = 0, INV = 0;
+  let L = 0, C = 0, W = 0, E = 0, INV = 0, CW = 0, LV = 0;
   const bs = r.by_source || {};
   const keys = source ? (bs[source] ? [source] : []) : Object.keys(bs);
   keys.forEach(s => {
-    const [l, c, w, inv, u] = _bs4(bs[s]);
+    const [l, c, w, inv, u, lv] = _bs4(bs[s]);
     const le = Math.max(0, l - (_mixValid ? inv : 0));
     const we = w + (_mixUW ? u : 0);
     L += le; C += c; W += we; INV += inv; E += le * (rates[s] || 0);
+    CW += w; LV += lv;
   });
   return {
     name: r.name, is_me: r.is_me, leads: L, converted: C, won: W, invalid: INV,
+    // Go live % is out of Closed Won only: UW deals can't be live yet
+    closed_won: CW, live: LV,
+    live_pct: CW ? +(LV / CW * 100).toFixed(1) : 0,
     conv_pct: L ? +(C / L * 100).toFixed(1) : 0,
     actual_pct: L ? +(W / L * 100).toFixed(1) : 0,
     expected_won: +E.toFixed(1),
@@ -69,11 +74,11 @@ function _repDetailHTML(name) {
   const rep = (mix.reps || []).find(r => r.name === name);
   if (!rep) return '';
   const rows = Object.entries(rep.by_source || {}).map(([s, arr]) => {
-    const [l, c, w0, inv, u] = _bs4(arr);
+    const [l, c, w0, inv, u, lv] = _bs4(arr);
     const w = w0 + (_mixUW ? u : 0);
     const le = Math.max(0, l - (_mixValid ? inv : 0));
     const exp = le * (rates[s] || 0);
-    return { s, le, c, w, inv, exp };
+    return { s, le, c, w, inv, exp, w0, lv };
   }).filter(r => r.le > 0 || r.w > 0).sort((a, b) => b.le - a.le);
   const inner = rows.map(r => `<tr>
     <td style="text-align:left;padding:3px 8px">${r.s}</td>
@@ -82,16 +87,19 @@ function _repDetailHTML(name) {
     <td style="padding:3px 8px">${_pctCell(r.le ? (r.c / r.le * 100).toFixed(1) : 0, r.le)}</td>
     <td style="padding:3px 8px"><strong>${r.w}</strong></td>
     <td style="padding:3px 8px">${_pctCell(r.le ? (r.w / r.le * 100).toFixed(1) : 0, r.le)}</td>
+    <td style="padding:3px 8px">${r.lv}</td>
+    <td style="padding:3px 8px">${_pctCell(r.w0 ? (r.lv / r.w0 * 100).toFixed(0) : 0, r.w0)}</td>
     <td style="padding:3px 8px;color:#6b7280">${rates[r.s] != null ? (rates[r.s] * 100).toFixed(1) + '%' : '—'}</td>
     <td style="padding:3px 8px;color:#6b7280">${r.exp.toFixed(1)}</td>
     <td style="padding:3px 8px;color:${r.w >= r.exp ? '#059669' : '#dc2626'}">${r.exp > 0 ? ((r.w / r.exp - 1) * 100).toFixed(0) + '%' : '—'}</td>
   </tr>`).join('');
-  return `<tr class="mix-detail-row"><td colspan="10" style="background:#f8fafc;padding:8px 16px 12px">
+  return `<tr class="mix-detail-row"><td colspan="12" style="background:#f8fafc;padding:8px 16px 12px">
     <table style="width:100%;font-size:12px;border-collapse:collapse">
       <thead><tr style="color:#6b7280;text-align:right">
         <th style="text-align:left;padding:3px 8px">Source</th><th style="padding:3px 8px">Leads</th>
         <th style="padding:3px 8px">Conv</th><th style="padding:3px 8px">Conv%</th>
         <th style="padding:3px 8px">Won</th><th style="padding:3px 8px">Close%</th>
+        <th style="padding:3px 8px">Live</th><th style="padding:3px 8px">Live%</th>
         <th style="padding:3px 8px" title="Team close rate for this source under the current toggles — Leads x Team% = Exp">Team%</th>
         <th style="padding:3px 8px">Exp</th><th style="padding:3px 8px">Vs Exp</th>
       </tr></thead>
@@ -130,6 +138,8 @@ function renderMixTable() {
       <td>${_pctCell(r.conv_pct, r.leads)}</td>
       <td><strong>${r.won}</strong></td>
       <td>${_pctCell(r.actual_pct, r.leads)}</td>
+      <td>${r.live}</td>
+      <td>${_pctCell(r.live_pct, r.closed_won)}</td>
       <td style="color:#6b7280">${r.expected_won}</td>
       <td style="color:#6b7280">${_pctCell(r.expected_pct, r.leads)}</td>
       <td style="color:${r.expected_won < 3 ? '#9ca3af' : (pos ? '#059669' : '#dc2626')};font-weight:600" ${r.expected_won < 3 ? 'title="Small sample — read with caution"' : ''}>${r.expected_won > 0 ? (pos ? '+' : '') + r.index_pct + '%' : '—'}</td>
@@ -156,6 +166,8 @@ function renderMixTable() {
   const tc = rows.reduce((s, r) => s + r.converted, 0);
   const tw = rows.reduce((s, r) => s + r.won, 0);
   const te = rows.reduce((s, r) => s + r.expected_won, 0);
+  const tcw = rows.reduce((s, r) => s + r.closed_won, 0);
+  const tlv = rows.reduce((s, r) => s + r.live, 0);
   document.getElementById('mix-tfoot').innerHTML = `<tr style="border-top:2px solid #d1d5db;font-weight:700;background:#f9fafb">
     <td></td>
     <td style="text-align:left">TEAM</td>
@@ -164,6 +176,8 @@ function renderMixTable() {
     <td>${tl ? (tc / tl * 100).toFixed(1) : 0}%</td>
     <td>${tw}</td>
     <td>${tl ? (tw / tl * 100).toFixed(1) : 0}%</td>
+    <td>${tlv}</td>
+    <td>${tcw ? (tlv / tcw * 100).toFixed(1) + '%' : '—'}</td>
     <td style="color:#6b7280">${te.toFixed(1)}</td>
     <td style="color:#6b7280">${tl ? (te / tl * 100).toFixed(1) : 0}%</td>
     <td></td>
@@ -539,18 +553,21 @@ function exportMixCSV() {
   rows.sort((a, b) => _mixSortCol === 'name'
     ? a.name.localeCompare(b.name)
     : (b[_mixSortCol] || 0) - (a[_mixSortCol] || 0));
-  const head = ['Rank', 'Rep', 'Leads', 'Converted', 'Conv %', 'Won', 'Close %', 'Expected Won', 'Expected %', 'Vs Expected %'];
+  const head = ['Rank', 'Rep', 'Leads', 'Converted', 'Conv %', 'Won', 'Close %', 'Live', 'Live %', 'Expected Won', 'Expected %', 'Vs Expected %'];
   const lines = [head.join(',')];
   rows.forEach((r, i) => {
     lines.push([i + 1, '"' + r.name + '"', r.leads, r.converted, r.conv_pct, r.won,
-                r.actual_pct, r.expected_won, r.expected_pct, r.index_pct].join(','));
+                r.actual_pct, r.live, r.live_pct, r.expected_won, r.expected_pct, r.index_pct].join(','));
   });
   const tl = rows.reduce((s, r) => s + r.leads, 0);
   const tc = rows.reduce((s, r) => s + r.converted, 0);
   const tw = rows.reduce((s, r) => s + r.won, 0);
   const te = rows.reduce((s, r) => s + r.expected_won, 0);
+  const tcw = rows.reduce((s, r) => s + r.closed_won, 0);
+  const tlv = rows.reduce((s, r) => s + r.live, 0);
   lines.push(['', 'TEAM', tl, tc, tl ? (tc / tl * 100).toFixed(1) : 0, tw,
-              tl ? (tw / tl * 100).toFixed(1) : 0, te.toFixed(1),
+              tl ? (tw / tl * 100).toFixed(1) : 0, tlv,
+              tcw ? (tlv / tcw * 100).toFixed(1) : 0, te.toFixed(1),
               tl ? (te / tl * 100).toFixed(1) : 0, ''].join(','));
   const period = _mixMonthKey || ('since-' + (_mixData.window_start || 'start'));
   const src = _mixSource ? _mixSource.replace(/[^A-Za-z0-9]+/g, '-') : 'all-sources';
