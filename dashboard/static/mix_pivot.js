@@ -162,6 +162,14 @@ function renderMixTable() {
   </tr>`;
 }
 
+// "Since Jan 1" — built from the cumulative window start so labels track the data
+function _mixSinceLabel(mix) {
+  const ws = (mix && mix.window_start) || '';
+  if (!ws) return '';
+  const [y, m, d] = ws.split('-').map(Number);
+  return 'Since ' + new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function applyMixWindow() {
   const mix = _activeMix();
 
@@ -169,12 +177,8 @@ function applyMixWindow() {
   if (_mixMonthKey && mix.month_label) {
     document.getElementById('mix-window').textContent = mix.month_label;
   } else {
-    const ws = mix.window_start || '';
-    if (ws) {
-      const [y, m, d] = ws.split('-').map(Number);
-      document.getElementById('mix-window').textContent = 'since ' +
-        new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
+    const ws = _mixSinceLabel(mix);
+    if (ws) document.getElementById('mix-window').textContent = 's' + ws.slice(1);
   }
 
   // Summary cards (my numbers for the selected window, honoring the toggle).
@@ -425,7 +429,7 @@ function exportMixCSV() {
   lines.push(['', 'TEAM', tl, tc, tl ? (tc / tl * 100).toFixed(1) : 0, tw,
               tl ? (tw / tl * 100).toFixed(1) : 0, te.toFixed(1),
               tl ? (te / tl * 100).toFixed(1) : 0, ''].join(','));
-  const period = _mixMonthKey || 'since-mar-1';
+  const period = _mixMonthKey || ('since-' + (_mixData.window_start || 'start'));
   const src = _mixSource ? _mixSource.replace(/[^A-Za-z0-9]+/g, '-') : 'all-sources';
   const valid = _mixValid ? '_valid-only' : '';
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
@@ -445,7 +449,7 @@ function renderMixAdjusted(mix) {
   const monthSelect = document.getElementById('mix-month-select');
   const monthly = mix.monthly || {};
   const keys = Object.keys(monthly).sort().reverse();
-  monthSelect.innerHTML = '<option value="">Since Mar 1</option>' +
+  monthSelect.innerHTML = `<option value="">${_mixSinceLabel(mix)}</option>` +
     keys.map(k => `<option value="${k}">${monthly[k].month_label || k}</option>`).join('');
   monthSelect.value = _mixMonthKey;
   monthSelect.onchange = () => { _mixMonthKey = monthSelect.value; applyMixWindow(); };
@@ -499,7 +503,7 @@ function renderMixAdjusted(mix) {
   // Optional standalone Period selector on the source-totals card
   const srcMonthSelect = document.getElementById('mix-src-month-select');
   if (srcMonthSelect) {
-    srcMonthSelect.innerHTML = '<option value="">Since Mar 1</option>' +
+    srcMonthSelect.innerHTML = `<option value="">${_mixSinceLabel(mix)}</option>` +
       keys.map(k => `<option value="${k}">${monthly[k].month_label || k}</option>`).join('');
     srcMonthSelect.value = _mixSrcMonthKey;
     srcMonthSelect.onchange = () => { _mixSrcMonthKey = srcMonthSelect.value; renderMixSrcTable(); };
