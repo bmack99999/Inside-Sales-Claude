@@ -21,3 +21,6 @@ dashboard/local.db
 
 # Environment variables — contains secrets, never commit
 .env
+
+# Lead drip campaign state, contains contact info
+drip/
