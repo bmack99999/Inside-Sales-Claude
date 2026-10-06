@@ -41,7 +41,7 @@ Logs are at `logs/extract.log`.
 - **Database:** PostgreSQL via SQLAlchemy (Railway managed)
 - **Deploy trigger:** Push to `main` branch on GitHub
 - **Ingest API:** `POST /api/ingest` with `X-API-Key` header — extraction scripts use this to push data
-- **API Key:** `d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d`
+- **API Key:** `INGEST_API_KEY` in `.env` (gitignored). Never paste the key into a tracked file.
 - **DB migrations:** App auto-runs `ALTER TABLE ADD COLUMN IF NOT EXISTS` on startup (no Alembic)
 
 ## Microsoft 365 ONLY — Google Workspace is fully decommissioned

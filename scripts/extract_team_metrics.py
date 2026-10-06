@@ -13,13 +13,16 @@ import sys
 from collections import defaultdict
 from datetime import date, datetime
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
 try:
     import requests
 except ImportError:
     requests = None
 
 DASHBOARD_URL  = os.environ.get("DASHBOARD_URL", "https://web-production-980e0.up.railway.app")
-INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d")
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY", "dev-ingest-key")
 
 SF_ALIAS = "shift4"
 MY_ID    = "005Pd0000084UhFIAU"

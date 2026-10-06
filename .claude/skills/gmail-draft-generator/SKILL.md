@@ -25,7 +25,7 @@ Both paths share the same style rules and `outlook_create_draft` mechanics.
 - **Bryce's email:** `bryce.mack@shift4.com`
 - **Bryce's User ID (Salesforce):** `005Pd0000084UhFIAU`
 - **Railway URL:** `https://web-production-980e0.up.railway.app`
-- **Railway API key:** `d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d` (header `X-API-Key`)
+- **Railway API key:** `INGEST_API_KEY` in the repo root `.env` (header `X-API-Key`). Load it with `set -a; source .env; set +a` and reference `$INGEST_API_KEY`; never print it.
 - **Draft tool:** `mcp__75618fea-6128-4002-ab3e-adf2307c8a58__outlook_create_draft` (new) / `outlook_create_reply_draft` (thread replies). NOT the Gmail MCP.
 
 ## Bryce's Email Style Rules — ABSOLUTE
@@ -142,7 +142,7 @@ When Bryce says "generate my email drafts" or similar:
 3. **Clear the queue once all drafts are created:**
    ```
    POST https://web-production-980e0.up.railway.app/api/email_queue/clear
-   Header: X-API-Key: d219d2be8540f1d079dd896937fbd8fe41c9754ab955629cf74d43068e99d36d
+   Header: X-API-Key: $INGEST_API_KEY
    Body: {"all": true}
    ```
 
