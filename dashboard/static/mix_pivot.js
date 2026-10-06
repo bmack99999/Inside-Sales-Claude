@@ -143,6 +143,14 @@ function renderMixTable() {
       renderMixTable();
     };
   });
+  document.querySelectorAll('.mix-src-th-sort').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (_mixSrcSortCol === col) { _mixSrcSortAsc = !_mixSrcSortAsc; }
+      else { _mixSrcSortCol = col; _mixSrcSortAsc = col === 'source'; }
+      renderMixSrcTable();
+    };
+  });
 
   const tl = rows.reduce((s, r) => s + r.leads, 0);
   const tc = rows.reduce((s, r) => s + r.converted, 0);
@@ -222,6 +230,8 @@ function applyMixWindow() {
 }
 
 let _mixSrcMonthKey = '';
+let _mixSrcSortCol = 'leads';
+let _mixSrcSortAsc = false;
 
 function renderMixSrcTable() {
   // Team totals by source. If the card has its own Period selector, it uses
@@ -230,10 +240,30 @@ function renderMixSrcTable() {
   const key = sel ? _mixSrcMonthKey : _mixMonthKey;
   const mix = (key && _mixData.monthly && _mixData.monthly[key])
     ? _mixData.monthly[key] : _mixData;
-  document.getElementById('mix-src-tbody').innerHTML = (mix.source_rates || []).map(s => {
+  const rows = (mix.source_rates || []).map(s => {
     const le = s.leads - (_mixValid ? (s.invalid || 0) : 0);
     const conv = s.converted != null ? s.converted : 0;
     const we = s.won + (_mixUW ? (s.uw || 0) : 0);
+    return { s, source: s.source, leads: le, invalid: s.invalid || 0, converted: conv,
+             conv_pct: le ? conv / le * 100 : -1, won: we, close_pct: le ? we / le * 100 : -1 };
+  });
+  rows.sort((a, b) => {
+    if (_mixSrcSortCol === 'source') {
+      return _mixSrcSortAsc ? a.source.localeCompare(b.source) : b.source.localeCompare(a.source);
+    }
+    const va = a[_mixSrcSortCol], vb = b[_mixSrcSortCol];
+    return _mixSrcSortAsc ? va - vb : vb - va;
+  });
+
+  document.querySelectorAll('.mix-src-th-sort').forEach(th => {
+    const col = th.dataset.col;
+    const arrow = col === _mixSrcSortCol ? (_mixSrcSortAsc ? ' ▲' : ' ▼') : ' ⇅';
+    th.textContent = th.textContent.replace(/ [▲▼⇅]$/, '') + arrow;
+    th.style.color = col === _mixSrcSortCol ? '#1d4ed8' : '';
+  });
+
+  document.getElementById('mix-src-tbody').innerHTML = rows.map(r => {
+    const s = r.s, le = r.leads, conv = r.converted, we = r.won;
     return `<tr>
       <td style="text-align:left">${s.source}</td>
       <td>${le}</td>
