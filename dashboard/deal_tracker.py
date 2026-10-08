@@ -266,8 +266,9 @@ def derive_stage(deal, paid, today=None):
         return 'upfront_paid'
     if status == 'live' or deal.get('go_live_date'):
         return 'live'
-    sfp = parse_iso(deal.get('sf_start_processing_date'))
-    if sfp and sfp <= (today or date.today()):
+    # Salesforce Go_Live_Check__c is the only SF signal that the MID is really
+    # processing. Start_Processing_Date__c alone is just an estimate.
+    if deal.get('sf_go_live_check'):
         return 'live'
     if status == 'installed' or deal.get('install_date'):
         return 'installed'
@@ -338,16 +339,18 @@ def compute_deal(deal, payout_lines, a, today=None):
     go_live = parse_iso(d.get('go_live_date'))
     install = parse_iso(d.get('install_date'))
     sched = parse_iso(d.get('install_scheduled_date'))
-    # Salesforce Start_Processing_Date__c: authoritative. In the past it means
-    # the MID is live; in the future it is the scheduled/expected go live.
+    # Salesforce Start_Processing_Date__c is only an estimate until
+    # Go_Live_Check__c is flagged; once flagged it is the actual go live date.
     sf_proc = parse_iso(d.get('sf_start_processing_date'))
+    sf_checked = bool(d.get('sf_go_live_check'))
     go_live_est = None
     go_live_basis = None
     if go_live:
         go_live_est, go_live_basis = go_live, 'go live date'
-    elif sf_proc:
-        go_live_est, go_live_basis = sf_proc, ('Salesforce start processing'
-                                               if sf_proc <= today else 'Salesforce scheduled processing')
+    elif sf_proc and sf_checked:
+        go_live_est, go_live_basis = sf_proc, 'Salesforce go live (checked)'
+    elif sf_proc and (sf_proc >= today or not install):
+        go_live_est, go_live_basis = sf_proc, 'Salesforce est. start processing'
     elif install:
         go_live_est, go_live_basis = install + timedelta(days=a['days_install_to_live']), 'install date'
     elif sched:
@@ -362,7 +365,9 @@ def compute_deal(deal, payout_lines, a, today=None):
     if go_live_est is None and sign:
         go_live_est = sign + timedelta(days=a['days_sign_to_install'] + a['days_install_to_live'])
         go_live_basis = 'sign date + %dd' % (a['days_sign_to_install'] + a['days_install_to_live'])
-    if go_live_est and go_live_est < today and stage in ('signed', 'onboarding', 'install_scheduled') and not go_live:
+    sf_est_passed = bool(sf_proc and not sf_checked and sf_proc < today and stage not in ('live', 'upfront_paid', 'complete'))
+    if go_live_est and go_live_est < today and not go_live and (
+            stage in ('signed', 'onboarding', 'install_scheduled') or sf_est_passed):
         go_live_est = today + timedelta(days=a['days_install_to_live'])
         go_live_basis = 'not live yet, assumes soon'
 
@@ -405,6 +410,8 @@ def compute_deal(deal, payout_lines, a, today=None):
     dss = d['days_since_sign']
     if stale:
         risks.append('No install date or Salesforce processing date %d days after signing, left out of the forecast' % dss)
+    if sf_est_passed:
+        risks.append('Salesforce start processing date %s passed but Go Live Check is not flagged' % sf_proc.isoformat())
     if stage == 'install_scheduled' and sched and sched < today - timedelta(days=3):
         risks.append('Scheduled install date passed without an install')
     if upfront_overdue:

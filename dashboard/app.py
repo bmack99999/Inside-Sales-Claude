@@ -89,6 +89,7 @@ with app.app_context():
         ("team_metrics",   "mix_adjusted",      "TEXT"),
         ("opp_targets",    "opp_created",       "TEXT"),
         ("tracked_deals",  "sf_start_processing_date", "TEXT"),
+        ("tracked_deals",  "sf_go_live_check",  "BOOLEAN DEFAULT FALSE"),
         ("tracked_deals",  "cfd",               "INTEGER DEFAULT 0"),
         ("tracked_deals",  "kitchen_printers",  "INTEGER DEFAULT 0"),
         ("opportunities",  "notes",            "TEXT"),
@@ -645,6 +646,7 @@ _DEAL_NUM_FIELDS = ('rate_pct', 'per_item', 'mo_volume', 'saas_monthly')
 _DEAL_INT_FIELDS = ('terminals', 'handhelds', 'kds', 'cfd', 'kitchen_printers', 'other_devices')
 _DEAL_DATE_FIELDS = ('sign_date', 'install_scheduled_date', 'install_date', 'go_live_date',
                      'sf_start_processing_date')
+_DEAL_BOOL_FIELDS = ('sf_go_live_check',)
 
 
 def _sf_id_from_url(url):
@@ -696,6 +698,10 @@ def _apply_deal_payload(deal, payload, source='manual'):
             except (ValueError, TypeError):
                 v = 0
             _set(f, v)
+    for f in _DEAL_BOOL_FIELDS:
+        if f in payload:
+            v = payload[f]
+            _set(f, v in (True, 'true', 'True', '1', 1, 'on'))
     if 'mid_raw' in payload or 'mid' in payload:
         raw = payload.get('mid_raw') if 'mid_raw' in payload else payload.get('mid')
         norm = normalize_mid(raw)
@@ -1555,6 +1561,9 @@ def api_ingest():
             deal = None
             if item.get('id'):
                 deal = TrackedDeal.query.get(item['id'])
+            sfid = (item.get('sf_opp_id') or '')[:15]
+            if deal is None and sfid:
+                deal = TrackedDeal.query.filter(TrackedDeal.sf_opp_id.like(sfid + '%')).first()
             mid = normalize_mid(item.get('mid') or item.get('mid_raw'))
             if deal is None and mid:
                 deal = TrackedDeal.query.filter_by(mid=mid).first()
@@ -1565,6 +1574,15 @@ def api_ingest():
                     q = q.filter_by(sign_date=sd.isoformat())
                 deal = q.first()
             src = item.get('source') or 'sheet_import'
+            if src == 'salesforce':
+                # Go live sync from Salesforce: only ever updates matched deals,
+                # writes just the SF go live fields, and fills a blank opp id.
+                if deal is None:
+                    continue
+                opp_id = item.get('sf_opp_id')
+                item = {k: item[k] for k in ('sf_start_processing_date', 'sf_go_live_check') if k in item}
+                if opp_id and not deal.sf_opp_id:
+                    item['sf_opp_id'] = opp_id
             if deal is None:
                 if not item.get('site'):
                     continue

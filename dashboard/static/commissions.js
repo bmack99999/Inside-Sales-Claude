@@ -326,7 +326,7 @@
         field('install_scheduled_date', 'Install scheduled', d.install_scheduled_date, 'date') +
         field('install_date', 'Installed', d.install_date, 'date') +
         field('go_live_date', 'Go live (status 700)', d.go_live_date, 'date') +
-        field('sf_start_processing_date', 'SF start processing', d.sf_start_processing_date, 'date') +
+        field('sf_start_processing_date', d.sf_go_live_check ? 'SF start processing (live)' : 'SF start processing (est.)', d.sf_start_processing_date, 'date') +
         field('stall_reason', 'Stall reason', d.stall_reason, 'text', { placeholder: 'e.g. waiting on internet, owner unresponsive', hidden: d.status !== 'stalled' && d.status !== 'cancelled' }) +
       '</div></div>';
 

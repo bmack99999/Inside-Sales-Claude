@@ -101,6 +101,49 @@ def main():
     else:
         print("  (requests not installed — skipping Railway push)")
 
+    sync_go_live()
+
+
+def sync_go_live():
+    """Push Start_Processing_Date__c + Go_Live_Check__c onto the Commissions
+    deal tracker. The date is only an estimate until the check is flagged.
+    Matches existing tracked deals by opp id, then MID; never creates deals."""
+    print("\nSyncing go live dates to the Commissions tracker...")
+    soql = (
+        f"SELECT Id, MID__c, Start_Processing_Date__c, Go_Live_Check__c "
+        f"FROM Opportunity "
+        f"WHERE OwnerId = '{USER_ID}' AND StageName = 'Closed Won'"
+    )
+    try:
+        rows = sf_query(soql)
+    except SFQueryError as e:
+        print(f"  SKIP: {e}", file=sys.stderr)
+        return
+    items = [{
+        "sf_opp_id": r["Id"],
+        "mid": r.get("MID__c"),
+        "sf_start_processing_date": r.get("Start_Processing_Date__c"),
+        "sf_go_live_check": bool(r.get("Go_Live_Check__c")),
+        "source": "salesforce",
+    } for r in rows]
+    checked = sum(1 for i in items if i["sf_go_live_check"])
+    print(f"  {len(items)} closed won opps, {checked} with Go Live Check flagged")
+    if not requests:
+        return
+    try:
+        resp = requests.post(
+            f"{DASHBOARD_URL}/api/ingest",
+            json={"type": "tracked_deals", "tracked_deals": items},
+            headers={"X-API-Key": INGEST_API_KEY},
+            timeout=30,
+        )
+        if resp.ok:
+            print(f"  Tracker updated ✓ ({resp.json().get('updated')} deals changed)")
+        else:
+            print(f"  Tracker POST failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"  Tracker POST error: {e}")
+
 
 if __name__ == "__main__":
     main()
