@@ -104,6 +104,7 @@
       ctx.fillStyle = '#55657c'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ch.data.datasets.forEach(function (ds, di) {
         var meta = ch.getDatasetMeta(di);
+        if (ds.type === 'line') return;
         meta.data.forEach(function (bar, i) {
           var v = ds.data[i]; if (!v) return;
           ctx.fillText(money(v), bar.x, bar.y - 3);
@@ -119,6 +120,13 @@
     var ctx = $('cx-chart').getContext('2d');
     var total90 = view.summary.projected_90d;
     $('cx-forecast-sub').textContent = 'Paid the last 3 months, projected after that. Click a bar for that month\u2019s deals.';
+    // Average monthly commission: paid + projected, across the months from the
+    // first to the last one with any money (so empty far out months don't drag it down).
+    var totals = f.months.map(function (m, i) { return (f.paid[i] || 0) + (f.projected[i] || 0); });
+    var nz = totals.map(function (v, i) { return v ? i : -1; }).filter(function (i) { return i >= 0; });
+    var span = nz.length ? totals.slice(nz[0], nz[nz.length - 1] + 1) : [];
+    var avg = span.length ? span.reduce(function (a, b) { return a + b; }, 0) / span.length : 0;
+    $('cx-avg-label').textContent = 'Avg ' + money(avg) + ' / month';
     if (chart) chart.destroy();
     chart = new Chart(ctx, {
       type: 'bar',
@@ -127,6 +135,7 @@
         datasets: [
           { label: 'Paid', data: f.paid, backgroundColor: accent, borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 34 },
           { label: 'Projected', data: f.projected, backgroundColor: hatch(accent), borderColor: accent, borderWidth: 1, borderRadius: 4, borderSkipped: 'bottom', maxBarThickness: 34 },
+          { type: 'line', label: 'Avg / month', data: f.months.map(function () { return avg; }), borderColor: '#e08a1e', borderWidth: 2, borderDash: [6, 4], pointRadius: 0, pointHitRadius: 0, fill: false, order: -1 },
         ]
       },
       plugins: [valueLabels],
