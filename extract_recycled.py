@@ -65,6 +65,14 @@ NO_TOUCH_KEYWORDS = [
     'in contact', 'working deal', 'in process',
 ]
 
+# Opp Targets cohort (rebuilt every extraction, posted as ingest type 'opp_targets').
+# A converted recycled opp owned by another rep is a target when nobody has had a
+# TWO WAY conversation on it in OPP_TARGET_STALE_DAYS. A no touch marker newer than
+# OPP_TARGET_NO_TOUCH_DAYS (or future dated, e.g. "demo scheduled") keeps it off the
+# list; an older one puts it in the review_no_touch segment for Bryce to judge.
+OPP_TARGET_STALE_DAYS    = 30
+OPP_TARGET_NO_TOUCH_DAYS = 90
+
 
 # ─── Timezone lookup ──────────────────────────────────────────────────────────
 
@@ -187,6 +195,11 @@ def is_contact_activity(task):
             and task.get('TaskSubtype') in ('Call', 'Email', 'ListEmail'))
 
 
+def _days_ago(iso_date):
+    """Days between an ISO date (YYYY-MM-DD...) and today; negative if future."""
+    return (date.today() - date.fromisoformat(iso_date[:10])).days
+
+
 # ─── Main Extraction ─────────────────────────────────────────────────────────
 
 def main():
@@ -245,18 +258,19 @@ def main():
 
     # Fetch the owner of each converted opp (used by the dashboard Opp Targets
     # tracker to exclude Bryce's own opps and to display who originally worked it)
-    opp_owner = {}   # opp_id -> {'email': ..., 'name': ...}
+    opp_owner = {}   # opp_id -> {'email': ..., 'name': ..., 'created': ...}
     if active_opp_ids:
         for i in range(0, len(active_opp_ids), 200):
             batch = active_opp_ids[i:i + 200]
             id_list = "','".join(batch)
             owners = run_soql(
-                f"SELECT Id, Owner.Name, Owner.Email FROM Opportunity "
+                f"SELECT Id, CreatedDate, Owner.Name, Owner.Email FROM Opportunity "
                 f"WHERE Id IN ('{id_list}')"
             )
             for o in owners:
                 ow = o.get('Owner') or {}
-                opp_owner[o['Id']] = {'email': ow.get('Email'), 'name': ow.get('Name')}
+                opp_owner[o['Id']] = {'email': ow.get('Email'), 'name': ow.get('Name'),
+                                      'created': o.get('CreatedDate')}
 
     # Step 2: Pull all tasks in batches (leads + opp activities)
     print("\n[2/3] Querying activities (batched)...")
@@ -362,6 +376,7 @@ def main():
     # Step 3: Categorize leads
     print("\n[3/3] Categorizing leads...")
     output_leads = []
+    opp_targets = []
 
     # Recency is measured from the most recent activity dated on or before today.
     # Management requires a future follow-up task always be set, so future-dated
@@ -453,6 +468,50 @@ def main():
 
         owner = opp_owner.get(lead.get('ConvertedOpportunityId'), {})
 
+        # Opp Targets: last TWO WAY contact = a logged note or a completed
+        # call/email whose text reads like a real conversation (admin tasks like
+        # "Account Closure Checklist" are excluded via is_contact_activity). One way dials and
+        # emails don't reset the clock.
+        last_two_way = next(
+            (t.get('ActivityDate') for t in all_lead_activities
+             if t.get('ActivityDate') and t['ActivityDate'] <= today_str
+             and (t.get('TaskSubtype') == 'Note'
+                  or (is_contact_activity(t) and had_real_conversation(t)))),
+            None,
+        )
+        # Newest dated activity carrying a no touch marker (future dates count:
+        # a "demo scheduled" task next week means someone is actively on it).
+        no_touch_dates = [
+            t.get('ActivityDate') for t in all_lead_activities
+            if t.get('ActivityDate')
+            and any(kw in f"{t.get('Subject') or ''} {t.get('Description') or ''}".lower()
+                    for kw in NO_TOUCH_KEYWORDS)
+        ]
+        last_no_touch = max(no_touch_dates) if no_touch_dates else None
+
+        if (lead.get('IsConverted') and lead.get('ConvertedOpportunityId')
+                and (owner.get('email') or '').lower() != MY_EMAIL):
+            segment = None
+            if last_two_way and _days_ago(last_two_way) < OPP_TARGET_STALE_DAYS:
+                segment = None          # recently worked, not a target
+            elif no_touch and last_no_touch and _days_ago(last_no_touch) < OPP_TARGET_NO_TOUCH_DAYS:
+                segment = None          # active no touch marker
+            elif no_touch:
+                segment = 'review_no_touch'
+            elif last_two_way:
+                segment = 'stale_conversation'
+            elif last_contact_date:
+                segment = 'one_way_only'
+            else:
+                segment = 'never_connected'
+            if segment:
+                opp_targets.append({
+                    'sf_id': lid,
+                    'segment': segment,
+                    'added_at': today_str,
+                    'opp_created': owner.get('created'),
+                })
+
         # Emails Bryce himself sent on this lead/opp: completed Email tasks owned
         # by him, on or before today. Drives the "Emailed" column on Opp Targets.
         my_email_dates = [
@@ -528,6 +587,28 @@ def main():
             print(f"  Dashboard POST failed: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         print(f"  Dashboard POST error: {e}")
+
+    # Rebuild the Opp Targets cohort (delete+replace on the dashboard). Skip the
+    # post if it came back empty so a failed SF pull can't wipe the page.
+    seg_counts = defaultdict(int)
+    for t in opp_targets:
+        seg_counts[t['segment']] += 1
+    print(f"\n[Opp Targets: {len(opp_targets)} stale opps] " +
+          ", ".join(f"{k} {v}" for k, v in sorted(seg_counts.items())))
+    if opp_targets:
+        try:
+            resp = requests.post(
+                f"{DASHBOARD_URL}/api/ingest",
+                json={"type": "opp_targets", "targets": opp_targets},
+                headers={"X-API-Key": INGEST_API_KEY},
+                timeout=60
+            )
+            if resp.status_code == 200:
+                print(f"  Opp Targets updated: {resp.json().get('targets')} targets")
+            else:
+                print(f"  Opp Targets POST failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            print(f"  Opp Targets POST error: {e}")
 
     # Local backup files
     print("[Writing local backup files...]")

@@ -1414,14 +1414,17 @@ def api_ingest():
 
     elif ingest_type == 'opp_targets':
         # Delete+replace the reconnect-campaign target list (Opp Targets page).
+        # Rebuilt by extract_recycled.py every run; keep the first added_at so a
+        # target's original join date survives the rebuild.
         targets = data.get('targets', [])
+        prior_added = {t.sf_id: t.added_at for t in OppTarget.query.all()}
         OppTarget.query.delete(synchronize_session=False)
         db.session.flush()
         for t in targets:
             db.session.add(OppTarget(
                 sf_id       = t['sf_id'],
                 segment     = t.get('segment'),
-                added_at    = t.get('added_at'),
+                added_at    = prior_added.get(t['sf_id']) or t.get('added_at'),
                 opp_created = t.get('opp_created'),
             ))
         db.session.commit()
