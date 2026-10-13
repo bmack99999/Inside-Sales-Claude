@@ -581,7 +581,7 @@ _PAYOUT_TYPE_LABELS = {
 
 def _deal_ledger(payouts, deals):
     """Per-deal roll-up joined by MID: every deal with its total paid + payout
-    lines. Used for the per-deal drill and Book of Business. Includes deals with
+    lines. Used for the per-deal drill. Includes deals with
     no payouts yet, and payout MIDs with no matching deal (flagged)."""
     deal_by_mid = {d['mid']: d for d in deals if d.get('mid')}
     payouts_by_mid = {}
@@ -850,29 +850,6 @@ def tracked_deals_sf_prefill():
     else:
         out['found'] = False
     return jsonify(out)
-
-
-@app.route('/book-of-business')
-def book_of_business():
-    payouts = [p.to_dict() for p in CommissionPayout.query.all()]
-    deals   = [d.to_dict() for d in Deal.query.all()]
-    ledger  = _deal_ledger(payouts, deals)
-    # Summary stats for the top of the page
-    total_deals = len([l for l in ledger if l['in_registry']])
-    by_year, by_type = {}, {}
-    for l in ledger:
-        if not l['in_registry']:
-            continue
-        yr = (l['sign_date'] or '')[:4] or 'Unknown'
-        by_year[yr] = by_year.get(yr, 0) + 1
-        t = l['deal_type'] or 'Other'
-        by_type[t] = by_type.get(t, 0) + 1
-    refreshed_at = max([d.get('extracted_at') or '' for d in deals], default='')
-    return render_template('book_of_business.html',
-                           ledger=ledger, total_deals=total_deals,
-                           by_year=dict(sorted(by_year.items(), reverse=True)),
-                           by_type=dict(sorted(by_type.items(), key=lambda x: -x[1])),
-                           refreshed_at=refreshed_at)
 
 
 @app.route('/api/commissions_data')

@@ -1,6 +1,6 @@
 ---
 name: commissions-refresh
-description: Use this skill when Bryce says "refresh commissions", "update my commissions", "pull the commission sheets", "rebuild the book of business", or any variant asking to rebuild the Commissions or Book of Business dashboard pages from the Google Sheets. Claude reads the Drive sheets, parses payouts and deals, and POSTs them to the Railway ingest API.
+description: Use this skill when Bryce says "refresh commissions", "update my commissions", "pull the commission sheets", or any variant asking to rebuild the Commissions dashboard page from the Google Sheets. Claude reads the Drive sheets, parses payouts and deals, and POSTs them to the Railway ingest API.
 ---
 
 # Commissions Refresh Workflow
@@ -8,10 +8,11 @@ description: Use this skill when Bryce says "refresh commissions", "update my co
 > **2026-09-15:** `/commissions` was rebuilt as an inside sales deal tracker (`TrackedDeal`,
 > dashboard is the source of truth, see CLAUDE.md). This skill still owns the **payout
 > sheets → `CommissionPayout`** path, which the tracker joins by MID. The Customers sheet
-> → `Deal` registry now only feeds Book of Business; do not use it to add inside sales
+> → `Deal` registry only feeds the `/api/commissions_data` ledger (the Book of Business
+> page was removed 2026-10-13); do not use it to add inside sales
 > deals, Bryce adds those on the page.
 
-The Commissions + Book of Business pages are built on a **MID-keyed model**: a `Deal`
+The Commissions payouts are built on a **MID-keyed model**: a `Deal`
 registry (from Bryce's "Customers" sheet) joined to `CommissionPayout` lines
 (from the commission sheets) on normalized MID. There is no sheet auth in
 the extraction scripts — Claude is the bridge.

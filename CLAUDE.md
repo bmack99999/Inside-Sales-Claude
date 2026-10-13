@@ -77,7 +77,7 @@ When Bryce asks to generate email drafts (queued on the dashboard or ad-hoc), us
 - **Email monitoring:** when Bryce asks to update deal statuses / check installs, or during the daily briefing's Onboarding to Install section, use the **`deal-status-monitor`** skill (`.claude/skills/deal-status-monitor/`). It maps Outlook signals (Welcome to Shift4 Dine, Kickoff Recap install dates, Not Processing Transactions) onto tracker statuses.
 
 ## Commissions Refresh Workflow
-When Bryce says "refresh commissions" (or similar), use the **`commissions-refresh`** skill (`.claude/skills/commissions-refresh/`) — it covers the payout sheets, parsers, and Railway ingest. Payouts feed both the Commissions tracker (by MID) and Book of Business.
+When Bryce says "refresh commissions" (or similar), use the **`commissions-refresh`** skill (`.claude/skills/commissions-refresh/`) — it covers the payout sheets, parsers, and Railway ingest. Payouts feed the Commissions tracker (by MID). The Book of Business page was removed 2026-10-13.
 
 ## Salesforce Safety Rules — NON-NEGOTIABLE
 **NEVER perform any of the following, even if it seems helpful:**
