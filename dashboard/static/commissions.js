@@ -180,6 +180,61 @@
     el.innerHTML = head + det.map(function (d) { return '<span><strong>' + esc(d.site) + '</strong> ' + esc(d.what) + ' ' + money(d.amount) + '</span>'; }).join('');
   }
 
+  // ── forecast PDF export ──────────────────────────────────────────────────
+  // Opens a print ready copy of the forecast (chart image + month table +
+  // per deal lines) in a new tab and triggers the browser's print dialog, where
+  // "Save as PDF" writes the file. No server work, no extra libraries.
+  function exportForecastPdf() {
+    var f = view.forecast;
+    var img = (chart && chart.canvas.width > 0) ? chart.toBase64Image('image/png', 1) : '';
+    var avg = ($('cx-avg-label').textContent || '').replace(/^Avg\s*/, '');
+    var paidTotal = 0, projTotal = 0;
+    var monthRows = f.months.map(function (m, i) {
+      var p = f.paid[i] || 0, pr = f.projected[i] || 0;
+      paidTotal += p; projTotal += pr;
+      return '<tr' + (m === f.current_month ? ' class="now"' : '') + '><td>' + esc(fmtMonth(m)) + (m === f.current_month ? ' <span class="tag">this month</span>' : '') + '</td>' +
+        '<td class="num">' + (p ? money(p, { cents: true }) : '') + '</td>' +
+        '<td class="num">' + (pr ? money(pr, { cents: true }) : '') + '</td>' +
+        '<td class="num"><strong>' + ((p + pr) ? money(p + pr, { cents: true }) : '') + '</strong></td></tr>';
+    }).join('');
+    var detail = f.months.map(function (m) {
+      var det = f.detail[m] || [];
+      if (!det.length) return '';
+      var sub = det.reduce(function (a, d) { return a + d.amount; }, 0);
+      return '<h3>' + esc(fmtMonth(m)) + ' <span class="muted">' + money(sub, { cents: true }) + ' projected</span></h3>' +
+        '<table><thead><tr><th>Deal</th><th>What</th><th>Expected</th><th class="num">Amount</th></tr></thead><tbody>' +
+        det.map(function (d) {
+          return '<tr><td>' + esc(d.site) + '</td><td>' + esc(d.what) + '</td><td>' + esc(fmtDate(d.due, true)) + '</td><td class="num">' + money(d.amount, { cents: true }) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }).join('');
+    var od = f.overdue || [];
+    var overdue = od.length ? '<h3>Earned but unpaid <span class="muted">' + money(f.overdue_total, { cents: true }) + '</span></h3>' +
+      '<table><thead><tr><th>Deal</th><th>What</th><th>Expected</th><th class="num">Amount</th></tr></thead><tbody>' +
+      od.map(function (d) {
+        return '<tr><td>' + esc(d.site) + '</td><td>' + esc(d.what) + '</td><td>' + esc(fmtDate(d.due, true)) + '</td><td class="num">' + money(d.amount, { cents: true }) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '';
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Payout forecast ' + esc(view.today) + '</title><style>' +
+      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#16233a;margin:32px;font-size:12.5px}' +
+      'h1{font-size:20px;margin:0 0 2px}h3{font-size:13px;margin:22px 0 6px}.muted{color:#55657c;font-weight:400}.sub{color:#55657c;margin-bottom:18px}' +
+      'img{width:100%;max-height:260px;object-fit:contain;margin:6px 0 14px;page-break-inside:avoid}' +
+      'table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}th,td{padding:6px 8px;border-bottom:1px solid #e3e8ef;text-align:left;vertical-align:top}' +
+      'th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#55657c;border-bottom:2px solid #c9d2de}.num{text-align:right;font-variant-numeric:tabular-nums}' +
+      'tr.now td{background:#f1f6fd}.tag{font-size:10px;color:#2a78d6;font-weight:600;margin-left:4px}tfoot td{font-weight:700;border-top:2px solid #c9d2de;border-bottom:0}' +
+      '@page{margin:14mm}@media print{body{margin:0}}' +
+      '</style></head><body>' +
+      '<h1>Payout forecast</h1><div class="sub">Generated ' + esc(fmtDate(view.today, true)) + ' · Paid the last 3 months, projected after that · Avg ' + esc(avg) + '</div>' +
+      (img ? '<img src="' + img + '" alt="Commission paid and projected by month">' : '') +
+      '<table><thead><tr><th>Month</th><th class="num">Paid</th><th class="num">Projected</th><th class="num">Total</th></tr></thead><tbody>' + monthRows + '</tbody>' +
+      '<tfoot><tr><td>Total</td><td class="num">' + money(paidTotal, { cents: true }) + '</td><td class="num">' + money(projTotal, { cents: true }) + '</td><td class="num">' + money(paidTotal + projTotal, { cents: true }) + '</td></tr></tfoot></table>' +
+      detail + overdue +
+      '</body></html>';
+    var w = window.open('', '_blank');
+    if (!w) { toast('Pop up blocked. Allow pop ups for this site to export.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    w.focus();
+    setTimeout(function () { w.print(); }, 350);
+  }
+
   // ── filters + table ──────────────────────────────────────────────────────
   var FILTERS = [
     { key: 'inflight', label: 'In flight', test: function (d) { return d.stage !== 'complete' && d.stage !== 'cancelled'; } },
@@ -582,6 +637,7 @@
   $('cx-tbody').addEventListener('click', function (e) { var tr = e.target.closest('tr[data-id]'); if (tr) openDrawer(tr.dataset.id, 'edit'); });
   $('cx-new-btn').addEventListener('click', function () { openDrawer(null, 'new'); });
   $('cx-assump-btn').addEventListener('click', openAssumptions);
+  $('cx-export-btn').addEventListener('click', exportForecastPdf);
   $('cx-scrim').addEventListener('click', function () { closeDrawer(); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { if (!$('cx-assump-modal').hidden) { $('cx-assump-modal').hidden = true; $('cx-assump-scrim').hidden = true; } else if (!$('cx-drawer').hidden) closeDrawer(); }

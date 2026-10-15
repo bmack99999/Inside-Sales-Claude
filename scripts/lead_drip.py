@@ -132,7 +132,7 @@ def action(entry, step):
             'step': step, 'subject': SUBJECT if step == 1 else 'RE: ' + SUBJECT,
             'reply_on_thread': step > 1, 'touch1_sent_on': entry.get('touch1_sent_on'),
             'body_text': text, 'body_html': body_html,
-            'sf_task_subject': 'Drip email %d of 4' % step}
+            'sf_task_subject': 'Email'}
 
 
 def cmd_plan(state, day):
